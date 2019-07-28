@@ -38,7 +38,6 @@ function rand!(XX::SimpleDiffBridge, P::ContinuousTimeProcess, ::Auxiliary, WW)
         numAuxSamples += 1
         auxCross(XX.prop, XX.aux) && return numAuxSamples
     end
-    print(numAuxSamples, ", ")
 end
 
 function diffusionsCross(fw::SamplePath, bw::SamplePath)

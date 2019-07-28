@@ -3,25 +3,27 @@ import Random.rand!
 struct ConfluentDiffBridge
     fw::Vector{PathSegment}
     fwc::Vector{PathSegment}
+    fwcᵒ::Vector{PathSegment}
     bw::Vector{PathSegment}
     bwc::Vector{PathSegment}
+    bwcᵒ::Vector{PathSegment}
     prop::Vector{PathSegment}
     aux::Vector{PathSegment}
+    auxᵒ::Vector{PathSegment}
     τIdx::Vector{Tuple{Int64, Int64}}
 
     function ConfluentDiffBridge(T::Number, numSegments::Integer)
         dt = T/numSegments
 
         c = [PathSegment((i-1)*dt, dt) for i in 1:numSegments]
-        θ = [deepcopy(c) for i in 1:6]
+        θ = [deepcopy(c) for i in 1:9]
         τIdx = [(1,1)]
 
-        new(θ[1], θ[2], θ[3], θ[4], θ[5], θ[6], τIdx)
+        new(θ[1], θ[2], θ[3], θ[4], θ[5], θ[6], θ[7], θ[8], θ[9], τIdx)
     end
 end
 
 length(XX::ConfluentDiffBridge) = length(XX.fw)
-
 
 function rand!(XX::ConfluentDiffBridge, P::ContinuousTimeProcess, ::Proposal,
                x0, xT)
@@ -44,59 +46,66 @@ function crossPopulate!(XX::ConfluentDiffBridge)
     end
 end
 
-function crossPopulate!(fw::PathSegment, fwc, bw, bwc, T::Float64)
+function crossPopulate!(fw::PathSegment, fwᵒ, bw, bwᵒ, T::Float64)
     κ₁, κ₂ = fw.κ[1], bw.κ[1]
     κ = κ₁ + κ₂
-    resize!(fwc, κ+2)
-    resize!(bwc, κ+2)
-    fwc.κ[1] = bwc.κ[1] = κ
+    resize!(fwᵒ, κ+2)
+    resize!(bwᵒ, κ+2)
+    fwᵒ.κ[1] = bwᵒ.κ[1] = κ
 
-    fwc.tt[1] = bwc.tt[1] = fw.tt[1]
-    fwc.yy[1] = fw.yy[1]
-    bwc.yy[1] = bw.yy[κ₂+2]
+    i_fw = Idx(1,1,false)
+    i_bw = Idx(κ₂+2,1,true)
 
-    # iterator scanning through backward diffusion
-    i_bw = κ₂+1
-    # iterator scanning through cross-populated diffusions
-    iₓ = 2
+    fwᵒ.tt[i_fw.iᵒ] = bwᵒ.tt[i_bw.iᵒ] = fw.tt[i_fw.i]
+    fwᵒ.yy[i_fw.iᵒ] = fw.yy[i_fw.i]
+    bwᵒ.yy[i_bw.iᵒ] = bw.yy[i_bw.iᵒ]
+
+    i_fw = next_nextᵒ(i_fw)
+    i_bw = next_nextᵒ(i_bw)
+
 
     # iterate over elements of the forward diffusion
-    for i in 2:κ₁+2
-        i_bw, iₓ = fillInForwardDiff!(fw.tt[i-1], fw.tt[i], fw.yy[i-1],
-                                      fw.yy[i], fwc, bwc, bw, i_bw, iₓ, T)
-        if i < κ₁+2
-            bwc.yy[iₓ] = sampleBB(bw.yy[i_bw+1], bw.yy[i_bw], T-bw.tt[i_bw+1],
-                                  T-bw.tt[i_bw], fw.tt[i])
-            iₓ += 1
+    while i_fw.i < κ₁+3
+        i_fw, i_bw = fillInForwardDiff!(fw.tt[i_fw.i_1], fw.tt[i_fw.i],
+                                        fw.yy[i_fw.i_1], fw.yy[i_fw.i],
+                                        fwᵒ, bwᵒ, bw, i_fw, i_bw, T)
+        if i_fw.i < κ₁+2
+            bwᵒ.yy[i_bw.iᵒ] = sampleBB(bwᵒ.yy[i_bw.iᵒ_1], bw.yy[i_bw.i],
+                                       T-bwᵒ.tt[i_bw.iᵒ_1], T-bw.tt[i_bw.i],
+                                       fw.tt[i_fw.i])
+            i_bw = nextᵒ(i_bw)
         else
-            @assert i_bw == 1
-            bwc.yy[iₓ] = bw.yy[1]
-            bwc.tt[iₓ] = fwc.tt[iₓ] # to avoid numerical surprises
+            @assert i_bw.i == 1
+            bwᵒ.yy[i_bw.iᵒ] = bw.yy[i_bw.i]
+            bwᵒ.tt[i_bw.iᵒ] = fwᵒ.tt[i_fw.iᵒ_1] # to avoid numerical surprises
         end
+        i_fw = next(i_fw)
     end
 
 end
 
-function fillInForwardDiff!(t0_fw, T_fw, x0_fw, xT_fw, fwc, bwc, bw, i_bw, iₓ, T)
-    t = T - bw.tt[i_bw]
-    while T_fw > t
-        fwc.tt[iₓ] = t
-        bwc.tt[iₓ] = t
 
-        fwc.yy[iₓ] = sampleBB(x0_fw, xT_fw, t0_fw, T_fw, t)
-        bwc.yy[iₓ] = bw.yy[i_bw]
+function fillInForwardDiff!(t0_fw, T_fw, x0_fw, xT_fw, fwᵒ, bwᵒ, bw, i_fw, i_bw, T)
+    t = T - bw.tt[i_bw.i]
+    while T_fw > t
+        fwᵒ.tt[i_fw.iᵒ] = t
+        bwᵒ.tt[i_bw.iᵒ] = t
+
+        fwᵒ.yy[i_fw.iᵒ] = sampleBB(x0_fw, xT_fw, t0_fw, T_fw, t)
+        bwᵒ.yy[i_bw.iᵒ] = bw.yy[i_bw.i]
 
         t0_fw = t
-        x0_fw = fwc.yy[iₓ]
+        x0_fw = fwᵒ.yy[i_fw.iᵒ]
 
-        iₓ += 1
-        i_bw -= 1
-        t = T - bw.tt[i_bw]
+        i_fw = nextᵒ(i_fw)
+        i_bw = next_nextᵒ(i_bw)
+        t = T - bw.tt[i_bw.i]
     end
-    fwc.tt[iₓ] = T_fw
-    bwc.tt[iₓ] = T_fw
-    fwc.yy[iₓ] = xT_fw # bwc.yy[iₓ] is set outside the function
-    i_bw, iₓ
+    fwᵒ.tt[i_fw.iᵒ] = T_fw
+    bwᵒ.tt[i_bw.iᵒ] = T_fw
+    fwᵒ.yy[i_fw.iᵒ] = xT_fw # bwc.yy[iₓ] is set outside the function
+    i_fw = nextᵒ(i_fw)
+    i_fw, i_bw
 end
 
 
@@ -178,4 +187,101 @@ function sampleBB(x0::Float64, xT::Float64, t0::Float64, T::Float64, t::Float64;
     endPt = midPt + σ*√(T-t0)*randn(Float64)
     midPt += x0*(T-t)/(T-t0) + (xT-endPt)*(t-t0)/(T-t0)
     midPt
+end
+
+
+function rand!(XX::ConfluentDiffBridge, P::ContinuousTimeProcess, ::Auxiliary)
+    numAuxSamples = 0
+    while true
+        y = rand(P, Invariant())
+        rand!(XX.aux, P, y)
+        numAuxSamples += 1
+        crossPopulateAux!(XX)
+        auxCross(XX) && return numAuxSamples
+    end
+end
+
+
+function auxCross(XX::ConfluentDiffBridge)
+    diffsCross = ( simpleCrossing(XX) || rand(Acoin(), XX)
+                   || rand(Bcoin(), XX) || rand(Coin(), XX) )
+    return diffsCross
+end
+
+function crossPopulateAux!(XX::ConfluentDiffBridge)
+    N = length(XX)
+    crossIntv, crossIdx = XX.τIdx
+    iᵒ = crossIntv # just shortening the name
+    for i in 1:iᵒ-1
+        crossPopulateAuxLeft!(XX.fwc[i], XX.bwc[i], XX.aux[i], XX.fwcᵒ[i],
+                              XX.bwcᵒ[i], XX.auxᵒ[i])
+    end
+    crossPopulateAuxMid!(XX.fwc[iᵒ], XX.bwc[iᵒ], XX.aux[iᵒ], XX.fwcᵒ[iᵒ],
+                         XX.bwcᵒ[iᵒ], XX.auxᵒ[iᵒ], crossIdx)
+    for i in iᵒ+1:N
+        crossPopulateAuxRight!(XX.fwc[i], XX.bwc[i], XX.aux[i], XX.fwcᵒ[i],
+                               XX.bwcᵒ[i], XX.auxᵒ[i])
+    end
+end
+
+function crossPopulateAuxLeft!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, τIdx)
+    κ₁, κ₂ = fw.κ[1], aux.κ[1]
+    κ = κ₁ + κ₂
+    resize!(fwᵒ, κ+2)
+    resize!(bwᵒ, κ+2)
+    resize!(auxᵒ, κ+2)
+    fwᵒ.κ[1] = bwᵒ.κ[1] = auxᵒ.κ[1] = κ
+
+    fwᵒ.tt[1] = bwᵒ.tt[1] = auxᵒ.tt[1] = fw.tt[1]
+    fwᵒ.yy[1], bwᵒ.yy[1], auxᵒ.yy[1] = fw.yy[1], bw.yy[1], aux.yy[1]
+
+    i_aux = 2
+    iₓ = 2
+
+    for i in 2:κ₁+2
+        i_aux, iₓ = fillInFwBwDiff!(fw.tt[i-1], fw.tt[i], fw.yy[i-1], fw.yy[i],
+                                    bw.yy[i-1], bw.yy[i], fwᵒ, bwᵒ, auxᵒ, aux,
+                                    i_aux, iₓ)
+        if i < κ₁+2
+            auxᵒ.yy[iₓ] = sampleBB(aux.yy[i_aux-1], aux.yy[i_aux],
+                                   aux.tt[i_aux-1], aux.tt[ti_aux], fw.tt[i])
+            iₓ += 1
+        else
+            @assert i_aux = κ₂+2
+            auxᵒ.yy[iₓ]
+    end
+end
+
+
+function fillInFwBwDiff!(t0_fw, T_fw, x0_fw, xT_fw, x0_bw, xT_bw, fwᵒ, bwᵒ,
+                         auxᵒ, aux, i_aux, iₓ)
+    t = aux.tt[i_aux]
+    while T_fw > t
+        fwᵒ.tt[iₓ] = t
+        bwᵒ.tt[iₓ] = t
+        auxᵒ.tt[iₓ] = t
+
+        fwᵒ.yy[iₓ], bwᵒ.yy[iₓ] = sampleCondBB(x0_fw, xT_fw, x0_bw, xT_bw, t0_fw,
+                                              T_fw, t)
+        auxᵒ.yy[iₓ] = aux.yy[i_aux]
+
+        t0_fw = t
+        x0_fw = fwᵒ.yy[iₓ]
+        x0_bw = bwᵒ.yy[iₓ]
+
+        iₓ += 1
+        i_aux += 1
+        t = aux.tt[i_aux]
+    end
+    fwᵒ.tt[iₓ] = T_fw
+    bwᵒ.tt[iₓ] = T_fw
+    auxᵒ.tt[iₓ] = T_fw
+
+    fwᵒ.yy[iₓ] = xT_fw
+    bwᵒ.yy[iₓ] = xT_bw
+    i_aux, iₓ
+end
+
+
+function sampleCondBB()
 end
