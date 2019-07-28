@@ -2,6 +2,23 @@ using Distributions
 using Random
 import Random: rand!, rand
 
+"""
+    PathSegment
+Struct
+
+```
+struct PathSegment
+    yy::Vector{Float64}     # diffusion path
+    ppp::Vector{Float64}    # poisson point process
+    tt::Vector{Float64}     # time at which diffusion path/ppp are revealed
+    dWt::Vector{Float64}    # auxiliary container for the noise
+    t₀::Float64             # starting time
+    T::Float64              # interval length
+    κ::Vector{Int64}        # number of poisson points sampled
+    maxN::Vector{Int64}     # maximum current capacity of the containers
+```
+stores all containers needed by the rejection sampler on a path space
+"""
 struct PathSegment
     yy::Vector{Float64}
     ppp::Vector{Float64}
@@ -26,6 +43,12 @@ struct PathSegment
     end
 end
 
+"""
+    resize!(XX::PathSegment, N)
+
+Change the sizes of the internal containers to be at least of size `N`. If
+currently the containers are already larger, do nothing
+"""
 function resize!(XX::PathSegment, N)
     if XX.maxN[1] < N
         resize!(XX.yy, N)
@@ -36,7 +59,12 @@ function resize!(XX::PathSegment, N)
     end
 end
 
+"""
+    rand!(XX::PathSegment, P::ContinuousTimeProcess, x₀=0.0; xₜ=nothing)
 
+Draw path using rejection sampler on a path space. If `xₜ` is not specified,
+then sample unconditioned paths, otherwise sample diffusion bridges.
+"""
 function rand!(XX::PathSegment, P::ContinuousTimeProcess, x₀=0.0; xₜ=nothing)
     accepted = false
     xT = 0.0
@@ -55,6 +83,13 @@ function rand!(XX::PathSegment, P::ContinuousTimeProcess, x₀=0.0; xₜ=nothing
     xT
 end
 
+"""
+    rand!(XX::Vector{PathSegment}, P::ContinuousTimeProcess, x₀=0.0)
+
+Sample unconditioned paths using rejection sampling on a path space using
+additional segmentation scheme based on the Markov property (useful for long
+intervals)
+"""
 function rand!(XX::Vector{PathSegment}, P::ContinuousTimeProcess, x₀=0.0)
     N = length(XX)
     for i in 1:N
@@ -63,10 +98,25 @@ function rand!(XX::Vector{PathSegment}, P::ContinuousTimeProcess, x₀=0.0)
     x₀
 end
 
+"""
+    sampleEndPt(P, x0, T, xT::Float64)
 
+End-point is specified, nothing to do, simply return it
+"""
 sampleEndPt(P, x0, T, xT::Float64) = xT
+
+"""
+    sampleEndPt(P, x0, T, xT::Nothing)
+
+Sample the end-point at time `T` using Biased Brownian bridges for law the `P`
+"""
 sampleEndPt(P, x0, T, xT::Nothing) = rand!(P, EndPoint(), x0, T)
 
+"""
+    samplePPP!(XX::PathSegment, upBd::Float64)
+
+Sample poisson point process of `upBd`-intesity on [0,`XX.T`]
+"""
 function samplePPP!(XX::PathSegment, upBd::Float64)
     κ = rand(Poisson(XX.T*upBd))
     resize!(XX, κ+2) # +2 for start point and end point
@@ -80,6 +130,12 @@ function samplePPP!(XX::PathSegment, upBd::Float64)
     κ
 end
 
+"""
+    sampleBB!(x₀::Float64, xT::Float64, XX::PathSegment)
+
+Sample Brownian bridges joining `x₀` and `xT` over [`XX.t₀`, `XX.t₀`+`XX.T`],
+revealing them at a time grid specified by `XX.tt` and `XX.κ`
+"""
 function sampleBB!(x₀::Float64, xT::Float64, XX::PathSegment)
     κ = XX.κ[1]
     XX.yy[1] = x₀

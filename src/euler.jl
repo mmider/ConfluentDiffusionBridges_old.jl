@@ -1,3 +1,10 @@
+"""
+    solve!(::EulerMaruyama, P::ContinuousTimeProcess, X::SamplePath,
+           W::SamplePath, u::Float64)
+
+Run Euler-Maruyama scheme to find path `X`, started from `u`, under the law `P`,
+which is obtained from the sampled Wiener process `W`
+"""
 function solve!(::EulerMaruyama, P::ContinuousTimeProcess, X::SamplePath,
                 W::SamplePath, u::Float64)
     N = length(W)

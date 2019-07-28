@@ -9,8 +9,13 @@ include(joinpath(SRC_DIR, "euler.jl"))
 include(joinpath(SRC_DIR, "simple_diffusion_bridges.jl"))
 include(joinpath(SRC_DIR, "langevin_t_distr_diffusion.jl"))
 
+using Plots
 
+
+# pseudo-marginal mcmc sampler using simple diffusion bridges. Return chain
+# of mid-points
 function mcmc(P, x0, xT, tt, numMCMCsteps=1000)
+    start = time()
     # workspace
     XX = SimpleDiffBridge(tt)
     XXᵒ = SimpleDiffBridge(tt)
@@ -33,31 +38,40 @@ function mcmc(P, x0, xT, tt, numMCMCsteps=1000)
         end
         midis[i] = XX.prop.yy[midi]
     end
-    print("Acceptance rate: ", numAccepted/numMCMCsteps)
+    elapsed = time() - start
+    print("Time elapsed: ", elapsed, "\n")
+    print("Acceptance rate: ", numAccepted/numMCMCsteps, "\n")
     XX, midis
 end
 
-tt = 0.0:0.01:4.0
-x0 = 2.0
-xT = 3.3
+
+# Define diffusion to sample
+x0, xT, T = 2.0, 3.3, 4.0
+tt = 0.0:0.01:T # time grid
 P = LangevinT(3.0)
-start = time()
-XX, midis3 = mcmc(P, x0, xT, tt, Integer(1e6))
-elapsed = time() - start
-print("Time elapsed: ", elapsed)
 
-using Plots
-WW = SimpleDiffBridge(tt)
-rand!(XX, P, Proposal(), x0, xT, WW)
-p = plot(XX.fw.tt, XX.fw.yy)
-plot!(XX.bw.tt, reverse(XX.bw.yy))
-plot!(XX.prop.tt, XX.prop.yy)
-plot!(XX.aux.tt, XX.aux.yy)
-idx = 49
-plot!([XX.fw.tt[idx], XX.fw.tt[idx]], [-2,3])
+# Run simple diffusion bridges
+XX, mid_pts_SDB = mcmc(P, x0, xT, tt, 10^6)
 
-p = histogram(midis3, normalize=:pdf, alpha=0.5, label="simple diffusion bridges")
-histogram!(mid_pts, normalize=:pdf, alpha=0.5, label="truth")
-plot!([2.0, 2.0], [0.0, 0.4], label="", linewidth=2.0)
-
+# Let's compare to the true distribution of mid-points
+include(joinpath(SRC_DIR, "path_space_rejection_sampler.jl"))
+include(joinpath(SRC_DIR, "fill_BB.jl"))
+include(joinpath(AUX_DIR, "path_space_rejection_sampling_convenience_fns.jl"))
+# sample mid points using Rejection sampling on a path space
+pathSamples, _ = samplePathsExactly(x0, xT, T, P, 10^6)
+mid_pts_exact = extractMidPts(x0, xT, T, pathSamples)
+# Let's compare the empirical distributions
+p = histogram(mid_pts_SDB, normalize=:pdf, alpha=0.5, label="simple diffusion bridges")
+histogram!(mid_pts_exact, normalize=:pdf, alpha=0.5, label="path space rejection sampler")
+plot!([2.0, 2.0], [0.0, 0.4])
 savefig(p, "sdb_vs_truth.png")
+
+
+
+
+# Let's check if the diffusions are spliced together correctly
+WW = SimpleDiffBridge(tt)
+rand!(XX, P, Proposal(), x0, xT, WW) # sample proposal
+p = plot(XX.fw.tt, XX.fw.yy) # plot forward path
+plot!(XX.bw.tt, reverse(XX.bw.yy)) # plot backward path
+plot!(XX.prop.tt, XX.prop.yy) # plot proposal path

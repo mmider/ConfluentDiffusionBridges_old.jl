@@ -1,6 +1,20 @@
 using Distributions
 using Random
 
+"""
+    fillBB(tt, x₀, xₜ, rtt, rxx)
+
+Sub-sample path on a time grid `tt`. It is assumed that the sample has been
+sampled using rejection sampling on a path space
+...
+# Arguments
+- tt: time grid at which to sample the path
+- x₀: starting point of the path
+- xₜ: end-point of the path
+- rtt: random time grid at which the path has already been revealed by PSRS
+- rxx: values of the path taken at a random time grid `rtt`
+...
+"""
 function fillBB(tt, x₀, xₜ, rtt, rxx)
     N = length(tt)
     xx = zeros(Float64, N)
@@ -18,18 +32,23 @@ function fillBB(tt, x₀, xₜ, rtt, rxx)
             while idx < N && tt[idx] <= rtt[i]
                 idx += 1
             end
-            xx[idx_prev:idx-1] = sampleBB(x0, rxx[i], t0, rtt[i], tt[idx_prev:idx-1])
+            xx[idx_prev:idx-1] = _sampleBB(x0, rxx[i], t0, rtt[i], tt[idx_prev:idx-1])
             idx_prev = idx
         end
-        xx[idx_prev:end] = sampleBB(rxx[end], xₜ, rtt[end], tt[end], tt[idx_prev:end])
+        xx[idx_prev:end] = _sampleBB(rxx[end], xₜ, rtt[end], tt[end], tt[idx_prev:end])
     else
-        xx[2:end-1] = sampleBB(xx[1], xx[end], tt[1], tt[end], tt[2:end-1])
+        xx[2:end-1] = _sampleBB(xx[1], xx[end], tt[1], tt[end], tt[2:end-1])
     end
     xx
 end
 
+"""
+    _sampleBB(x0::Float64, xT::Float64, t0::Float64, T::Float64, tt)
 
-function sampleBB(x0::Float64, xT::Float64, t0::Float64, T::Float64, tt)
+Convenience function for sampling Brownian Bridges joining `x0` and `xT` on
+[`t0`,`T`]. Path is revealed on at a time grid `tt`.
+"""
+function _sampleBB(x0::Float64, xT::Float64, t0::Float64, T::Float64, tt)
     if length(tt)>0
         N = length(tt)
         noise = rand(Normal(), N+1)
