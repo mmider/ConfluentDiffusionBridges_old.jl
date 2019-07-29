@@ -7,7 +7,7 @@ include(joinpath(SRC_DIR, "types.jl"))
 include(joinpath(SRC_DIR, "wiener.jl"))
 include(joinpath(SRC_DIR, "euler.jl"))
 include(joinpath(SRC_DIR, "simple_diffusion_bridges.jl"))
-include(joinpath(SRC_DIR, "langevin_t_distr_diffusion.jl"))
+include(joinpath(SRC_DIR, "ornstein_uhlenbeck.jl"))
 
 using Plots
 
@@ -46,27 +46,23 @@ end
 
 
 # Define diffusion to sample
-x0, xT, T = 2.0, 3.3, 4.0
+x0, xT, T = -2.0, -2.0, 1.0
 tt = 0.0:0.01:T # time grid
-P = LangevinT(3.0)
+P = OrnsteinUhlenbeck(0.5, 0.0, 1.0)
 
 # Run simple diffusion bridges
 XX, mid_pts_SDB = mcmc(P, x0, xT, tt, 10^6)
 XX, mid_pts_SDB_mod = mcmc(P, x0, xT, tt, 10^6)
 
 # Let's compare to the true distribution of mid-points
-include(joinpath(SRC_DIR, "path_space_rejection_sampler.jl"))
-include(joinpath(SRC_DIR, "fill_BB.jl"))
-include(joinpath(AUX_DIR, "path_space_rejection_sampling_convenience_fns.jl"))
-# sample mid points using Rejection sampling on a path space
-pathSamples, _ = samplePathsExactly(x0, xT, T, P, 10^6)
-mid_pts_exact = extractMidPts(x0, xT, T, pathSamples)
 # Let's compare the empirical distributions
-p = histogram(mid_pts_SDB, normalize=:pdf, alpha=0.5, label="simple diffusion bridges (original)", legend=:bottomright)
+p = histogram(mid_pts_SDB, normalize=:pdf, alpha=0.5, label="simple diffusion bridges (original)",legend=:bottomleft)
 histogram!(mid_pts_SDB_mod, normalize=:pdf, alpha=0.5, label="simple diffusion bridges (modified)")
-histogram!(mid_pts_exact, normalize=:pdf, alpha=0.5, label="path space rejection sampler")
-plot!([2.0, 2.0], [0.0, 0.4], label="x=2")
-savefig(p, "sdb_vs_truth.png")
+xaxis = -4.0:0.01:0.0
+yaxis = [condpdf(P, x0, x, xT, 0.5, 1.0) for x in xaxis]
+plot!(xaxis, yaxis, label="exact pdf")
+#plot!([2.0, 2.0], [0.0, 0.4])
+savefig(p, "sdb_vs_truth_ou.png")
 
 
 
