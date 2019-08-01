@@ -42,11 +42,11 @@ function crossPopulate!(XX::ConfluentDiffBridge)
     N = length(XX)
     T = XX.fw[end].t₀ + XX.fw[end].T
     for i in 1:N
-        crossPopulate!(XX.fw[i], XX.fwc[i], XX.bw[N+1-i], XX.bwc[i], T)
+        crossPopulate!(XX.fw[i], XX.bw[N+1-i], XX.fwc[i], XX.bwc[i], T)
     end
 end
 
-function crossPopulate!(fw::PathSegment, fwᵒ, bw, bwᵒ, T::Float64)
+function crossPopulate!(fw::PathSegment, bw, fwᵒ, bwᵒ, T::Float64)
     κ₁, κ₂ = fw.κ[1], bw.κ[1]
     κ = κ₁ + κ₂
     resize!(fwᵒ, κ+2)
@@ -58,7 +58,7 @@ function crossPopulate!(fw::PathSegment, fwᵒ, bw, bwᵒ, T::Float64)
 
     fwᵒ.tt[i_fw.iᵒ] = bwᵒ.tt[i_bw.iᵒ] = fw.tt[i_fw.i]
     fwᵒ.yy[i_fw.iᵒ] = fw.yy[i_fw.i]
-    bwᵒ.yy[i_bw.iᵒ] = bw.yy[i_bw.iᵒ]
+    bwᵒ.yy[i_bw.iᵒ] = bw.yy[i_bw.i]
 
     i_fw = next_nextᵒ(i_fw)
     i_bw = next_nextᵒ(i_bw)
@@ -71,7 +71,7 @@ function crossPopulate!(fw::PathSegment, fwᵒ, bw, bwᵒ, T::Float64)
                                         fwᵒ, bwᵒ, bw, i_fw, i_bw, T)
         if i_fw.i < κ₁+2
             bwᵒ.yy[i_bw.iᵒ] = sampleBB(bwᵒ.yy[i_bw.iᵒ_1], bw.yy[i_bw.i],
-                                       T-bwᵒ.tt[i_bw.iᵒ_1], T-bw.tt[i_bw.i],
+                                       bwᵒ.tt[i_bw.iᵒ_1], T-bw.tt[i_bw.i],
                                        fw.tt[i_fw.i])
             i_bw = nextᵒ(i_bw)
         else
@@ -81,7 +81,6 @@ function crossPopulate!(fw::PathSegment, fwᵒ, bw, bwᵒ, T::Float64)
         end
         i_fw = next(i_fw)
     end
-
 end
 
 
@@ -224,7 +223,7 @@ function crossPopulateAux!(XX::ConfluentDiffBridge)
     end
 end
 
-function crossPopulateAuxLeft!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, τIdx)
+function crossPopulateAuxLeft!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ)
     κ₁, κ₂ = fw.κ[1], aux.κ[1]
     κ = κ₁ + κ₂
     resize!(fwᵒ, κ+2)
@@ -232,56 +231,105 @@ function crossPopulateAuxLeft!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, τIdx)
     resize!(auxᵒ, κ+2)
     fwᵒ.κ[1] = bwᵒ.κ[1] = auxᵒ.κ[1] = κ
 
-    fwᵒ.tt[1] = bwᵒ.tt[1] = auxᵒ.tt[1] = fw.tt[1]
-    fwᵒ.yy[1], bwᵒ.yy[1], auxᵒ.yy[1] = fw.yy[1], bw.yy[1], aux.yy[1]
+    i_fw = Idx(1,1,false)
+    i_aux = Idx(1,1,false)
 
-    i_aux = 2
-    iₓ = 2
+    fwᵒ.tt[i_fw.iᵒ] = bwᵒ.tt[i_fw.iᵒ] = auxᵒ.tt[i_aux.iᵒ] = fw.tt[i_fw.i]
+    fwᵒ.yy[i_fw.iᵒ], bwᵒ.yy[i_fw.iᵒ] = fw.yy[i_fw.iᵒ], bw.yy[i_fw.iᵒ]
+    auxᵒ.yy[i_aux.iᵒ] = aux.yy[i_aux.i]
+
+    i_fw = next_nextᵒ(i_fw)
+    i_aux = next_nextᵒ(i_aux)
 
     for i in 2:κ₁+2
-        i_aux, iₓ = fillInFwBwDiff!(fw.tt[i-1], fw.tt[i], fw.yy[i-1], fw.yy[i],
-                                    bw.yy[i-1], bw.yy[i], fwᵒ, bwᵒ, auxᵒ, aux,
-                                    i_aux, iₓ)
+        i_fw, i_aux = fillInFwBwDiff!(fw.tt[i_fw.i_1], fw.tt[i_fw.i],
+                                      fw.yy[i_fw.i_1], fw.yy[i_fw.i],
+                                      bw.yy[i_fw.i_1], bw.yy[i_fw.i],
+                                      fwᵒ, bwᵒ, auxᵒ, aux, i_fw, i_aux)
         if i < κ₁+2
-            auxᵒ.yy[iₓ] = sampleBB(aux.yy[i_aux-1], aux.yy[i_aux],
-                                   aux.tt[i_aux-1], aux.tt[ti_aux], fw.tt[i])
-            iₓ += 1
+            auxᵒ.yy[i_aux.iᵒ] = sampleBB(auxᵒ.yy[i_aux.iᵒ_1], aux.yy[i_aux.i],
+                                         auxᵒ.tt[i_aux.iᵒ_1], aux.tt[i_aux.i],
+                                         fw.tt[i_fw.i])
+            i_aux = nextᵒ(i_aux)
         else
-            @assert i_aux = κ₂+2
-            auxᵒ.yy[iₓ]
+            @assert i_aux.i = κ₂+2
+            auxᵒ.yy[i_aux.iᵒ] = aux.yy[i_aux.i]
+            auxᵒ.tt[i_aux.iᵒ] = fwᵒ.tt[i_fw.iᵒ_1]
+        end
+        i_fw = next(i_fw)
     end
 end
 
 
 function fillInFwBwDiff!(t0_fw, T_fw, x0_fw, xT_fw, x0_bw, xT_bw, fwᵒ, bwᵒ,
-                         auxᵒ, aux, i_aux, iₓ)
-    t = aux.tt[i_aux]
+                         auxᵒ, aux, i_fw, i_aux)
+    t = aux.tt[i_aux.i]
     while T_fw > t
-        fwᵒ.tt[iₓ] = t
-        bwᵒ.tt[iₓ] = t
-        auxᵒ.tt[iₓ] = t
+        fwᵒ.tt[i_fw.iᵒ] = t
+        bwᵒ.tt[i_fw.iᵒ] = t
+        auxᵒ.tt[i_aux.iᵒ] = t
 
-        fwᵒ.yy[iₓ], bwᵒ.yy[iₓ] = sampleCondBB(x0_fw, xT_fw, x0_bw, xT_bw, t0_fw,
-                                              T_fw, t)
-        auxᵒ.yy[iₓ] = aux.yy[i_aux]
+        fwᵒ.yy[i_fw.iᵒ], bwᵒ.yy[i_fw.iᵒ] = sampleCondBB(x0_fw, xT_fw,
+                                                        x0_bw, xT_bw,
+                                                        t0_fw, T_fw, t)
+        auxᵒ.yy[i_aux.iᵒ] = aux.yy[i_aux.i]
 
         t0_fw = t
-        x0_fw = fwᵒ.yy[iₓ]
-        x0_bw = bwᵒ.yy[iₓ]
+        x0_fw, x0_bw = fwᵒ.yy[i_fw.iᵒ], bwᵒ.yy[i_fw.iᵒ]
 
-        iₓ += 1
-        i_aux += 1
-        t = aux.tt[i_aux]
+        i_fw = nextᵒ(i_fw)
+        i_aux = next_nextᵒ(i_aux)
+        t = aux.tt[i_aux.i]
     end
-    fwᵒ.tt[iₓ] = T_fw
-    bwᵒ.tt[iₓ] = T_fw
-    auxᵒ.tt[iₓ] = T_fw
+    fwᵒ.tt[i_fw.iᵒ] = T_fw
+    bwᵒ.tt[i_fw.iᵒ] = T_fw
+    auxᵒ.tt[i_aux.iᵒ] = T_fw
 
-    fwᵒ.yy[iₓ] = xT_fw
-    bwᵒ.yy[iₓ] = xT_bw
-    i_aux, iₓ
+    fwᵒ.yy[i_fw.iᵒ] = xT_fw
+    bwᵒ.yy[i_fw.iᵒ] = xT_bw
+    i_fw = nextᵒ(i_fw)
+    i_fw, i_aux
+end
+
+# ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓ TO DO from this point on ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓
+
+function sampleCondBB()
 end
 
 
-function sampleCondBB()
+function crossPopulateAuxMid!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, τIdx)
+    κ₁, κ₂ = fw.κ[1], aux.κ[1]
+    κ = κ₁ + κ₂
+    resize!(fwᵒ, κ+2)
+    resize!(bwᵒ, κ+2)
+    resize!(auxᵒ, κ+2)
+    fwᵒ.κ[1] = bwᵒ.κ[1] = auxᵒ.κ[1] = κ
+
+    i_fw = Idx(1,1,false)
+    i_aux = Idx(1,1,false)
+
+    fwᵒ.tt[i_fw.iᵒ] = bwᵒ.tt[i_fw.iᵒ] = auxᵒ.tt[i_aux.iᵒ] = fw.tt[i_fw.i]
+    fwᵒ.yy[i_fw.iᵒ], bwᵒ.yy[i_fw.iᵒ] = fw.yy[i_fw.iᵒ], bw.yy[i_fw.iᵒ]
+    auxᵒ.yy[i_aux.iᵒ] = aux.yy[i_aux.i]
+
+    i_fw = next_nextᵒ(i_fw)
+    i_aux = next_nextᵒ(i_aux)
+
+    for i in 2:κ₁+2
+        i_fw, i_aux = fillInFwBwDiff!(fw.tt[i_fw.i_1], fw.tt[i_fw.i],
+                                      fw.yy[i_fw.i_1], fw.yy[i_fw.i],
+                                      bw.yy[i_fw.i_1], bw.yy[i_fw.i],
+                                      fwᵒ, bwᵒ, auxᵒ, aux, i_fw, i_aux)
+        if i < κ₁+2
+            auxᵒ.yy[i_aux.iᵒ] = sampleBB(auxᵒ.yy[i_aux.iᵒ_1], aux.yy[i_aux.i],
+                                         auxᵒ.tt[i_aux.iᵒ_1], aux.tt[i_aux.i],
+                                         fw.tt[i_fw.i])
+            i_aux = nextᵒ(i_aux)
+        else
+            @assert i_aux.i = κ₂+2
+            auxᵒ.yy[i_aux.iᵒ] = aux.yy[i_aux.i]
+            auxᵒ.tt[i_aux.iᵒ] = fwᵒ.tt[i_fw.iᵒ_1]
+        end
+        i_fw = next(i_fw)
+    end
 end
