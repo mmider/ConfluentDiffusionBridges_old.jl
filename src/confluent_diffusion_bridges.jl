@@ -10,7 +10,7 @@ struct ConfluentDiffBridge
     prop::Vector{PathSegment}
     aux::Vector{PathSegment}
     auxᵒ::Vector{PathSegment}
-    τIdx::Vector{Tuple{Int64, Int64, Float64, Float64}}
+    τ::Vector{Tuple{Int64, Int64, Float64, Float64}}
 
     function ConfluentDiffBridge(T::Number, numSegments::Integer)
         dt = T/numSegments
@@ -23,21 +23,37 @@ struct ConfluentDiffBridge
     end
 end
 
+"""
+    length(XX::ConfluentDiffBridge)
+
+Return the number of segments that each container is made out of
+"""
 length(XX::ConfluentDiffBridge) = length(XX.fw)
 
+"""
+    rand!(XX::ConfluentDiffBridge, P::ContinuousTimeProcess, ::Proposal, x0, xT)
+
+Draw a proposal diffusion according to the confluent diffusion bridge simulation
+algorithm
+"""
 function rand!(XX::ConfluentDiffBridge, P::ContinuousTimeProcess, ::Proposal,
                x0, xT)
     diffsCross = false
-    N = length(XX)
     while !diffsCross
-        rand!(XX.fw, P, x0)
+        rand!(XX.fw, P, x0) # call to path space rejection sampler
         rand!(XX.bw, P, xT)
         crossPopulate!(XX)
-        diffsCross, crossIdx, τ = diffusionsCross(XX.fw, XX.bw)
-        diffsCross && buildConcat!(crossIdx, τ, XX)
+        diffsCross, crossIdx, τ, x_τ = diffusionsCross(XX.fw, XX.bw)
+        diffsCross && (XX.τ[1] = (crossIdx..., τ, x_τ))
     end
 end
 
+"""
+    crossPopulate!(XX::ConfluentDiffBridge)
+
+Reveal forward and backward diffusion at additional time points, so that they
+are both revealed on a common time-grid.
+"""
 function crossPopulate!(XX::ConfluentDiffBridge)
     N = length(XX)
     T = XX.fw[end].t₀ + XX.fw[end].T
@@ -46,9 +62,61 @@ function crossPopulate!(XX::ConfluentDiffBridge)
     end
 end
 
+"""
+    crossPopulate!(fw::PathSegment, bw, fwᵒ, bwᵒ, T::Float64)
 
-function resize!(κ₁::Integer, κ₂::Integer, fwᵒ, bwᵒ, auxᵒ=nothing; extra=0)
-    κ = κ₁ + κ₂ + extra
+Reveal forward and backward diffusion at additional time points of a given
+segment, so that on this segment they are both revealed on a common time-grid.
+...
+# Arguments
+- fw: segment of a forward diffusion
+- bw: segment of a backward diffusion
+- fwᵒ: container where revealed forward diffusion will be stored
+- bwᵒ: container where revealed backward diffusion will be stored
+- T: length of the bridges
+...
+"""
+function crossPopulate!(fw::PathSegment, bw, fwᵒ, bwᵒ, T::Float64)
+    κ₁, κ₂ = fw.κ[1], bw.κ[1]
+    resize!(κ₁+κ₂, fwᵒ, bwᵒ)
+
+    i_fw = Idx(1,1,false,κ₁+2)
+    i_bw = Idx(κ₂+2,1,true,1)
+
+    i_fw, i_bw = initSegments!(fwᵒ, bwᵒ, fw, bw, i_fw, i_bw)
+
+    # iterate over elements of the forward diffusion
+    while moreLeft(i_fw)
+        i_fw, i_bw = fillInFw!(fw.tt[i_fw.i_1], fw.tt[i_fw.i],
+                                        fw.yy[i_fw.i_1], fw.yy[i_fw.i],
+                                        fwᵒ, bwᵒ, bw, i_fw, i_bw, T)
+        if !lastIntv(i_fw)
+            bwᵒ.yy[i_bw.iᵒ] = sampleBB(bwᵒ.yy[i_bw.iᵒ_1], bw.yy[i_bw.i],
+                                       bwᵒ.tt[i_bw.iᵒ_1], T-bw.tt[i_bw.i],
+                                       fw.tt[i_fw.i])
+            i_bw = nextᵒ(i_bw)
+        else
+            @assert lastIntv(i_bw)
+            bwᵒ.yy[i_bw.iᵒ] = bw.yy[i_bw.i]
+            bwᵒ.tt[i_bw.iᵒ] = fwᵒ.tt[i_fw.iᵒ_1] # to avoid numerical surprises
+        end
+        i_fw = next(i_fw)
+    end
+end
+
+"""
+    resize!(κ, fwᵒ, bwᵒ, auxᵒ=nothing)
+
+Resize internal containers
+...
+# Arguments
+- κ: total number of random (interior) points that need to be stored
+- fwᵒ: container with forward path
+- bwᵒ: container with backward path
+- auxᵒ: container with auxiliary path
+...
+"""
+function resize!(κ::Integer, fwᵒ, bwᵒ, auxᵒ=nothing)
     resize!(fwᵒ, κ+2)
     resize!(bwᵒ, κ+2)
     fwᵒ.κ[1] = bwᵒ.κ[1] = κ
@@ -58,7 +126,12 @@ function resize!(κ₁::Integer, κ₂::Integer, fwᵒ, bwᵒ, auxᵒ=nothing; e
     end
 end
 
+"""
+    initSegments!(seg₁ᵒ, seg₂ᵒ, seg₁, seg₂, i₁₃, i₂, seg₃ᵒ=nothing, seg₃=nothing)
 
+Initialise the proposal `ᵒ` segments by copying the first elements from the
+corresponding regular segments
+"""
 function initSegments!(seg₁ᵒ, seg₂ᵒ, seg₁, seg₂, i₁₃, i₂, seg₃ᵒ=nothing,
                        seg₃=nothing)
     seg₁ᵒ.tt[i₁₃.iᵒ] = seg₂ᵒ.tt[i₂.iᵒ] = seg₁.tt[i₁₃.i]
@@ -75,37 +148,13 @@ function initSegments!(seg₁ᵒ, seg₂ᵒ, seg₁, seg₂, i₁₃, i₂, seg�
     i₁₃, i₂
 end
 
+"""
+    fillInFw!(t0_fw, T_fw, x0_fw, xT_fw, fwᵒ, bwᵒ, bw, i_fw, i_bw, T)
 
-function crossPopulate!(fw::PathSegment, bw, fwᵒ, bwᵒ, T::Float64)
-    κ₁, κ₂ = fw.κ[1], bw.κ[1]
-    resize!(κ₁, κ₂, fwᵒ, bwᵒ)
-
-    i_fw = Idx(1,1,false)
-    i_bw = Idx(κ₂+2,1,true)
-
-    i_fw, i_bw = initSegments!(fwᵒ, bwᵒ, fw, bw, i_fw, i_bw)
-
-    # iterate over elements of the forward diffusion
-    while i_fw.i < κ₁+3
-        i_fw, i_bw = fillInForwardDiff!(fw.tt[i_fw.i_1], fw.tt[i_fw.i],
-                                        fw.yy[i_fw.i_1], fw.yy[i_fw.i],
-                                        fwᵒ, bwᵒ, bw, i_fw, i_bw, T)
-        if i_fw.i < κ₁+2
-            bwᵒ.yy[i_bw.iᵒ] = sampleBB(bwᵒ.yy[i_bw.iᵒ_1], bw.yy[i_bw.i],
-                                       bwᵒ.tt[i_bw.iᵒ_1], T-bw.tt[i_bw.i],
-                                       fw.tt[i_fw.i])
-            i_bw = nextᵒ(i_bw)
-        else
-            @assert i_bw.i == 1
-            bwᵒ.yy[i_bw.iᵒ] = bw.yy[i_bw.i]
-            bwᵒ.tt[i_bw.iᵒ] = fwᵒ.tt[i_fw.iᵒ_1] # to avoid numerical surprises
-        end
-        i_fw = next(i_fw)
-    end
-end
-
-
-function fillInForwardDiff!(t0_fw, T_fw, x0_fw, xT_fw, fwᵒ, bwᵒ, bw, i_fw, i_bw, T)
+Reveal forward diffusion at all time points inside the time interval
+[`t0_fw`, `t_fw`] at which backward diffusion is already revealed at.
+"""
+function fillInFw!(t0_fw, T_fw, x0_fw, xT_fw, fwᵒ, bwᵒ, bw, i_fw, i_bw, T)
     t = T - bw.tt[i_bw.i]
     while T_fw > t
         fwᵒ.tt[i_fw.iᵒ] = t
@@ -124,84 +173,59 @@ function fillInForwardDiff!(t0_fw, T_fw, x0_fw, xT_fw, fwᵒ, bwᵒ, bw, i_fw, i
     fwᵒ.tt[i_fw.iᵒ] = T_fw
     bwᵒ.tt[i_bw.iᵒ] = T_fw
     fwᵒ.yy[i_fw.iᵒ] = xT_fw # bwc.yy[iₓ] is set outside the function
-    i_fw = nextᵒ(i_fw)
+    i_fw = nextᵒ(i_fw)  # also incrementing next(i_fw) is done outside
     i_fw, i_bw
 end
 
+"""
+    diffusionsCross(fwᵒ::Vector{PathSegment}, bwᵒ::Vector{PathSegment})
 
-function diffusionsCross(fwc::Vector{PathSegment}, bwc::Vector{PathSegment})
-    N = length(fwc)
+Check if forward diffusion path `fwᴼ` and backward diffusion path `bwᴼ` cross,
+if so, sample the exact time of the first crossing from the left
+"""
+function diffusionsCross(fwᵒ::Vector{PathSegment}, bwᵒ::Vector{PathSegment})
+    N = length(fwᵒ)
     for i in 1:N
-        diffsCross, crossIdx, τ = diffusionsCross(fwc[i], bwc[i])
+        diffsCross, crossIdx, τ, x_τ = diffusionsCross(fwᵒ[i], bwᵒ[i])
         if diffsCross
-            return true, (i, crossIdx), τ
+            return true, (i, crossIdx), τ, x_τ
         end
     end
     return false, (nothing, nothing), nothing
 end
 
-# this is the simple crossing check
-function diffusionsCross(fwc::PathSegment, bwc::PathSegment)
-    N = fwc.κ[1] + 2
+"""
+    diffusionsCross(fwᵒ::PathSegment, bwᵒ::PathSegment)
+
+Check if the segment `fwᵒ` of the forward path and the segment `bwᵒ` of the
+backward path cross, if so sample the exact time of the first crossing from the
+left
+"""
+function diffusionsCross(fwᵒ::PathSegment, bwᵒ::PathSegment)
+    N = fwᵒ.κ[1] + 2
     for i in 1:N-1
-        # transform to diffusion G
-        g0 = fwc.yy[i] - bwc.yy[i]
-        gT = fwc.yy[i+1] - bwc.yy[i+1]
-        T = fwc.tt[i+1] - fwc.tt[i]
-        if sign(g0) != sign(gT) || rand(Dcoin(), g0, gT, T)
-            τ = rand(τᴰ(), g0, gT, T)
-            return true, i, τ
+        d0 = fwᵒ.yy[i] - bwᵒ.yy[i]
+        dT = fwᵒ.yy[i+1] - bwᵒ.yy[i+1]
+        T = fwᵒ.tt[i+1] - fwᵒ.tt[i]
+        if sign(d0) != sign(dT) || rand(Dcoin(), d0, dT, T)
+            s0 = fwᵒ.yy[i] + bwᵒ.yy[i]
+            sT = fwᵒ.yy[i+1] + bwᵒ.yy[i+1]
+            τ = rand(τᴰ(), d0, dT, T)
+            x_τ = 0.5*sampleBB(s0, sT, 0.0, T, τ; σ=√2.0)
+            return true, i, fwᵒ.tt[i] + τ, x_τ
         end
     end
-    return false, nothing, nothing
-end
-
-function copySegments!(copyTo, copyFrom, iRange)
-    for i in iRange
-        resize!(copyTo[i], copyFrom[i].κ[1]+2)
-        copyTo[i] .= copyFrom[i]
-    end
-end
-
-function copyPartOfSegment!(copyTo, copyFrom, iᵒRange, iRange)
-    copyTo.yy[iᵒRange] .= copyFrom.yy[iRange]
-    copyTo.tt[iᵒRange] .= copyFrom.tt[iRange]
+    return false, nothing, nothing, nothing
 end
 
 
-function buildConcat!((crossIntv, crossIdx), τ, XX::ConfluentDiffBridge)
-    N = length(XX)
-    copySegments!(XX.prop, XX.fwc, 1:crossIntv-1)
+"""
+    sampleBB(x0::Float64, xT::Float64, t0::Float64, T::Float64, t::Float64;
+             σ=1.0)
 
-    # re-labeling
-    prop, fw, bw = XX.prop[crossIntv], XX.fwc[crossIntv], XX.bwc[crossIntv]
-
-    resize!(prop, fw.κ[1]+3) # +2 for start and end point +1 for crossing time
-    prop.κ[1] = fw.κ[1]+1
-
-    copyPartOfSegment!(prop, fw, 1:crossIdx, 1:crossIdx)
-
-    s0 = fw.yy[crossIdx] + bw.yy[crossIdx]
-    sT = fw.yy[crossIdx+1] + bw.yy[crossIdx+1]
-    T = fw.tt[crossIdx+1] - fw.tt[crossIdx]
-    prop.yy[crossIdx+1] = sampleAtCrossing(s0, sT, T, τ)
-    prop.tt[crossIdx+1] = fw.tt[crossIdx] + τ
-
-    # store crossing info
-    XX.τIdx[1] = (crossIntv, crossIdx, prop.tt[crossIdx+1], prop.yy[crossIdx+1])
-
-    # copy backward diffusion from then on
-    copyPartOfSegment!(prop, bw, crossIdx+2:prop.κ[1]+2, crossIdx+1:prop.κ[1]+1)
-    copySegments!(XX.prop, XX.bwc, crossIntv+1:N)
-end
-
-
-function sampleAtCrossing(s0, sT, T, τ)
-    sτ = sampleBB(s0, sT, 0.0, T, τ; σ=√2.0)
-    0.5*sτ
-end
-
-
+Sample scaled Brownian bridge (scaled by `σ`) joining `x0` and `xT` on the time
+interval [`t0`,`T`] at time `t`
+"""
 function sampleBB(x0::Float64, xT::Float64, t0::Float64, T::Float64, t::Float64;
                   σ=1.0)
     midPt = σ*√(t-t0)*randn(Float64)
@@ -210,12 +234,17 @@ function sampleBB(x0::Float64, xT::Float64, t0::Float64, T::Float64, t::Float64;
     midPt
 end
 
+"""
+    rand!(XX::ConfluentDiffBridge, P::ContinuousTimeProcess, ::Auxiliary)
 
+Sample auxiliary diffusions according to the law `P` until the first one that
+hits the proposal path stored inside the container `XX`
+"""
 function rand!(XX::ConfluentDiffBridge, P::ContinuousTimeProcess, ::Auxiliary)
     numAuxSamples = 0
     while true
         y = rand(P, Invariant())
-        rand!(XX.aux, P, y)
+        rand!(XX.aux, P, y) # call to path space rejection sampler
         numAuxSamples += 1
         crossPopulateAux!(XX)
         auxCross(XX) && return numAuxSamples
@@ -229,8 +258,12 @@ function auxCross(XX::ConfluentDiffBridge)
     return diffsCross
 end
 
+"""
+    crossPopulateAux!(XX::ConfluentDiffBridge)
+
+Reveal the forward, backward and auxiliary diffusions at a common time-grid
+"""
 function crossPopulateAux!(XX::ConfluentDiffBridge)
-    N = length(XX)
     crossIntv, crossIdx = XX.τIdx
     iᵒ = crossIntv # just shortening the name
     for i in 1:iᵒ-1
@@ -315,7 +348,7 @@ function crossPopulateAuxMid!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, τIdx)
     i_fw = Idx(1,1,false,κ₁+2)
     i_aux = Idx(1,1,false,κ₂+2)
 
-    i_fw, i_aux, moreLeft = initSegments!(fwᵒ, auxᵒ, fw, aux, i_fw, i_aux, bwᵒ, bw)
+    i_fw, i_aux = initSegments!(fwᵒ, auxᵒ, fw, aux, i_fw, i_aux, bwᵒ, bw)
 
     while i_fw.i ≤ crossIdx
         i_fw, i_aux = fillInFwBwAux!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, i_fw, i_aux, sampleCondBB)
