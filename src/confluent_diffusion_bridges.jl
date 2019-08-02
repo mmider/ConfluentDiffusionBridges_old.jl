@@ -48,19 +48,19 @@ end
 
 
 function resize!(κ₁::Integer, κ₂::Integer, fwᵒ, bwᵒ, auxᵒ=nothing; extra=0)
-    κ = κ₁ + κ₂
+    κ = κ₁ + κ₂ + extra
     resize!(fwᵒ, κ+2)
     resize!(bwᵒ, κ+2)
     fwᵒ.κ[1] = bwᵒ.κ[1] = κ
     if auxᵒ != nothing
-        auxᵒ.κ[1]
         resize!(auxᵒ, κ+2)
+        auxᵒ.κ[1] = κ
     end
 end
 
 
 function initSegments!(seg₁ᵒ, seg₂ᵒ, seg₁, seg₂, i₁₃, i₂, seg₃ᵒ=nothing,
-                      seg₃=nothing)
+                       seg₃=nothing)
     seg₁ᵒ.tt[i₁₃.iᵒ] = seg₂ᵒ.tt[i₂.iᵒ] = seg₁.tt[i₁₃.i]
     seg₁ᵒ.yy[i₁₃.iᵒ] = seg₁.yy[i₁₃.i]
     seg₂ᵒ.yy[i₂.iᵒ] = seg₂.yy[i₂.i]
@@ -257,10 +257,11 @@ function crossPopulateAuxLeft!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ)
     i_fw, i_aux = initSegments!(fwᵒ, auxᵒ, fw, aux, i_fw, i_aux, bwᵒ, bw)
 
     for i in 2:κ₁+2
-        i_fw, i_aux = fillInFwBwDiff!(fw.tt[i_fw.i_1], fw.tt[i_fw.i],
+        i_fw, i_aux = fillInFwBw!(fw.tt[i_fw.i_1], fw.tt[i_fw.i],
                                       fw.yy[i_fw.i_1], fw.yy[i_fw.i],
                                       bw.yy[i_fw.i_1], bw.yy[i_fw.i],
-                                      fwᵒ, bwᵒ, auxᵒ, aux, i_fw, i_aux)
+                                      fwᵒ, bwᵒ, auxᵒ, aux, i_fw, i_aux,
+                                      sampleCondBB)
         if i < κ₁+2
             auxᵒ.yy[i_aux.iᵒ] = sampleBB(auxᵒ.yy[i_aux.iᵒ_1], aux.yy[i_aux.i],
                                          auxᵒ.tt[i_aux.iᵒ_1], aux.tt[i_aux.i],
@@ -275,18 +276,16 @@ function crossPopulateAuxLeft!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ)
     end
 end
 
-
-function fillInFwBwDiff!(t0_fw, T_fw, x0_fw, xT_fw, x0_bw, xT_bw, fwᵒ, bwᵒ,
-                         auxᵒ, aux, i_fw, i_aux)
+function fillInFwBw!(t0_fw, T_fw, x0_fw, xT_fw, x0_bw, xT_bw, fwᵒ, bwᵒ,
+                         auxᵒ, aux, i_fw, i_aux, fillingFn)
     t = aux.tt[i_aux.i]
     while T_fw > t
         fwᵒ.tt[i_fw.iᵒ] = t
         bwᵒ.tt[i_fw.iᵒ] = t
         auxᵒ.tt[i_aux.iᵒ] = t
 
-        fwᵒ.yy[i_fw.iᵒ], bwᵒ.yy[i_fw.iᵒ] = sampleCondBB(x0_fw, xT_fw,
-                                                        x0_bw, xT_bw,
-                                                        t0_fw, T_fw, t)
+        fwᵒ.yy[i_fw.iᵒ], bwᵒ.yy[i_fw.iᵒ] = fillingFn(x0_fw, xT_fw, x0_bw, xT_bw,
+                                                     t0_fw, T_fw, t)
         auxᵒ.yy[i_aux.iᵒ] = aux.yy[i_aux.i]
 
         t0_fw = t
@@ -306,39 +305,119 @@ function fillInFwBwDiff!(t0_fw, T_fw, x0_fw, xT_fw, x0_bw, xT_bw, fwᵒ, bwᵒ,
     i_fw, i_aux
 end
 
-# ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓ TO DO from this point on ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓
 
-function sampleCondBB()
+function crossPopulateAuxMid!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, τIdx)
+    crossIntv, crossIdx, τ, x_τ = τIdx
+
+    κ₁, κ₂ = fw.κ[1], aux.κ[1]
+    resize!(κ₁, κ₂, fwᵒ, bwᵒ, auxᵒ; extra=1)
+
+    i_fw = Idx(1,1,false,κ₁+2)
+    i_aux = Idx(1,1,false,κ₂+2)
+
+    i_fw, i_aux, moreLeft = initSegments!(fwᵒ, auxᵒ, fw, aux, i_fw, i_aux, bwᵒ, bw)
+
+    while i_fw.i ≤ crossIdx
+        i_fw, i_aux = fillInFwBwAux!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, i_fw, i_aux, sampleCondBB)
+    end
+
+    fillInFwBwAuxᵒ!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, i_fw, i_aux, τ, x_τ)
+
+    while moreLeft(i_fw)
+        i_fw, i_aux = fillInFwBwAux!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, i_fw, i_aux, sampleBB)
+    end
 end
 
 
-
-function crossPopulateAuxMid!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, τIdx)
-    crossIntv, crossIdx = τIdx
-
-    κ₁, κ₂ = fw.κ[1], aux.κ[1]
-    resize!(κ₁, κ₂, fwᵒ, bwᵒ, auxᵒ)
-
-    i_fw = Idx(1,1,false)
-    i_aux = Idx(1,1,false)
-
-    i_fw, i_aux = initSegments!(fwᵒ, auxᵒ, fw, aux, i_fw, i_aux, bwᵒ, bw)
-
-    for i in 2:κ₁+2
-        i_fw, i_aux = fillInFwBwDiff!(fw.tt[i_fw.i_1], fw.tt[i_fw.i],
-                                      fw.yy[i_fw.i_1], fw.yy[i_fw.i],
-                                      bw.yy[i_fw.i_1], bw.yy[i_fw.i],
-                                      fwᵒ, bwᵒ, auxᵒ, aux, i_fw, i_aux)
-        if i < κ₁+2
-            auxᵒ.yy[i_aux.iᵒ] = sampleBB(auxᵒ.yy[i_aux.iᵒ_1], aux.yy[i_aux.i],
-                                         auxᵒ.tt[i_aux.iᵒ_1], aux.tt[i_aux.i],
-                                         fw.tt[i_fw.i])
-            i_aux = nextᵒ(i_aux)
-        else
-            @assert i_aux.i = κ₂+2
-            auxᵒ.yy[i_aux.iᵒ] = aux.yy[i_aux.i]
-            auxᵒ.tt[i_aux.iᵒ] = fwᵒ.tt[i_fw.iᵒ_1]
-        end
-        i_fw = next(i_fw)
+function fillInFwBwAux!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, i_fw, i_aux, fillingFn)
+    i_fw, i_aux = fillInFwBw!(fw.tt[i_fw.i_1], fw.tt[i_fw.i],
+                              fw.yy[i_fw.i_1], fw.yy[i_fw.i],
+                              bw.yy[i_fw.i_1], bw.yy[i_fw.i],
+                              fwᵒ, bwᵒ, auxᵒ, aux, i_fw, i_aux, fillingFn)
+    if !lastIntv(i_fw)
+        auxᵒ.yy[i_aux.iᵒ] = sampleBB(auxᵒ.yy[i_aux.iᵒ_1], aux.yy[i_aux.i],
+                                     auxᵒ.tt[i_aux.iᵒ_1], aux.tt[i_aux.i],
+                                     fw.tt[i_fw.i])
+        i_aux = nextᵒ(i_aux)
+    else
+        @assert lastIntv(i_aux)
+        auxᵒ.yy[i_aux.iᵒ] = aux.yy[i_aux.i]
+        auxᵒ.tt[i_aux.iᵒ] = fwᵒ.tt[i_fw.iᵒ_1]
     end
+    i_fw = next(i_fw)
+    i_fw, i_aux
+end
+
+function fillInFwBwAuxᵒ!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, i_fw, i_aux, τ, x_τ)
+    i_fw, i_aux = fillInFwBw!(fw.tt[i_fw.i_1], fw.tt[i_fw.i_1] + τ,
+                              fw.yy[i_fw.i_1], x_τ,
+                              bw.yy[i_fw.i_1], x_τ,
+                              fwᵒ, bwᵒ, auxᵒ, aux, i_fw, i_aux, sampleBessel)
+    auxᵒ.yy[i_aux.iᵒ] = sampleBB(auxᵒ.yy[i_aux.iᵒ_1], aux.yy[i_aux.i],
+                                 auxᵒ.tt[i_aux.iᵒ_1], aux.tt[i_aux.i],
+                                 fw.tt[i_fw.i_1] + τ)
+    i_aux = nextᵒ(i_aux)
+    i_fw, i_aux = fillInFwBw!(fw.tt[i_fw.i_1] + τ, fw.tt[i_fw.i],
+                              x_τ, fw.yy[i_fw.i], x_τ, bw.yy[i_fw.i],
+                              fwᵒ, bwᵒ, auxᵒ, aux, i_fw, i_aux, sampleBB)
+    if !lastIntv(i_fw)
+        auxᵒ.yy[i_aux.iᵒ] = sampleBB(auxᵒ.yy[i_aux.iᵒ_1], aux.yy[i_aux.i],
+                                     auxᵒ.tt[i_aux.iᵒ_1], aux.tt[i_aux.i],
+                                     fw.tt[i_fw.i])
+        i_aux = nextᵒ(i_aux)
+    else
+        @assert lastIntv(i_aux)
+        auxᵒ.yy[i_aux.iᵒ] = aux.yy[i_aux.i]
+        auxᵒ.tt[i_aux.iᵒ] = fwᵒ.tt[i_fw.iᵒ_1]
+    end
+    i_fw = next(i_fw)
+    i_fw, i_aux
+end
+
+
+function sampleCondBB(x0_fw, xT_fw, x0_bw, xT_bw, t0_fw, T_fw, t)
+    d0 = x0_fw-x0_bw
+    dT = xT_fw-xT_bw
+    t₁ = t-t0_fw
+    t₂ = T_fw-t
+    while true
+        xt_fw = sampleBB(x0_fw, xT_fw, t0_fw, T_fw, t)
+        xt_bw = sampleBB(x0_bw, xT_bw, t0_fw, T_fw, t)
+        dt = xt_fw-xt_bw
+        if (sign(x0_fw-x0_bw) == sign(xt_fw-xt_bw) &&
+            !rand(Doin(), d0, dt, t₁) && !rand(Dcoin(), d0, dt, t₂))
+            return xt_fw, xt_bw
+        end
+    end
+end
+
+function sampleBessel(x0_fw, xT_fw, x0_bw, xT_bw, t0_fw, T_fw, t)
+    s0 = x0_fw + x0_bw
+    sT = xT_bw + xT_bw
+    st = sampleBB(s0, sT, t0_fw, T_fw, t; σ=√2.0)
+
+    dsign = sign(x0_fw - x0_bw)
+    d0 = abs(x0_fw - x0_bw)
+    dt = sampleBesselBridge(d0, t0_fw, T_fw, t; σ=√2.0)
+    0.5*(st + dsign*dt), 0.5*(st-dsign*dt)
+end
+
+
+function sampleBesselBridge(x0, t0, T, t; σ=1.0)
+    sqdt = √(t-t0)
+    x⁽¹⁾_t = σ*sqdt*randn(Float64)
+    x⁽²⁾_t = σ*sqdt*randn(Float64)
+    x⁽³⁾_t = σ*sqdt*randn(Float64)
+
+    sqdt = √(T-t)
+    x⁽¹⁾_T = x⁽¹⁾_t + σ*sqdt*randn(Float64)
+    x⁽²⁾_T = x⁽²⁾_t + σ*sqdt*randn(Float64)
+    x⁽³⁾_T = x⁽³⁾_t + σ*sqdt*randn(Float64)
+
+    θₜ = (t-t0)/(T-t0)
+    x⁽¹⁾_t -= θₜ * x⁽¹⁾_T
+    x⁽²⁾_t -= θₜ * x⁽²⁾_T
+    x⁽³⁾_t -= θₜ * x⁽³⁾_T
+
+    √((x⁽¹⁾_t + x0*(1.0-θₜ))^2 + x⁽²⁾_t^2 + x⁽³⁾_t^2)
 end
