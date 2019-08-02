@@ -264,14 +264,14 @@ end
 Reveal the forward, backward and auxiliary diffusions at a common time-grid
 """
 function crossPopulateAux!(XX::ConfluentDiffBridge)
-    crossIntv, crossIdx = XX.τIdx
+    crossIntv, _, _, _ = XX.τ
     iᵒ = crossIntv # just shortening the name
     for i in 1:iᵒ-1
         crossPopulateAuxLeft!(XX.fwc[i], XX.bwc[i], XX.aux[i], XX.fwcᵒ[i],
                               XX.bwcᵒ[i], XX.auxᵒ[i])
     end
     crossPopulateAuxMid!(XX.fwc[iᵒ], XX.bwc[iᵒ], XX.aux[iᵒ], XX.fwcᵒ[iᵒ],
-                         XX.bwcᵒ[iᵒ], XX.auxᵒ[iᵒ], crossIdx)
+                         XX.bwcᵒ[iᵒ], XX.auxᵒ[iᵒ], XX.τ)
     for i in iᵒ+1:N
         crossPopulateAuxRight!(XX.fwc[i], XX.bwc[i], XX.aux[i], XX.fwcᵒ[i],
                                XX.bwcᵒ[i], XX.auxᵒ[i])
@@ -279,36 +279,61 @@ function crossPopulateAux!(XX::ConfluentDiffBridge)
 end
 
 
+"""
+    crossPopulateAuxLeft!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ)
 
+Reveal the forward, backward and auxiliary diffusions at a common time-grid, on
+a segment known to be lying to the left of the first crossing time.
+"""
 function crossPopulateAuxLeft!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ)
     κ₁, κ₂ = fw.κ[1], aux.κ[1]
-    resize!(κ₁, κ₂, fwᵒ, bwᵒ, auxᵒ)
+    resize!(κ₁+κ₂, fwᵒ, bwᵒ, auxᵒ)
 
-    i_fw = Idx(1,1,false)
-    i_aux = Idx(1,1,false)
+    i_fw = Idx(1,1,false,κ₁+2)
+    i_aux = Idx(1,1,false,κ₂+2)
 
     i_fw, i_aux = initSegments!(fwᵒ, auxᵒ, fw, aux, i_fw, i_aux, bwᵒ, bw)
 
-    for i in 2:κ₁+2
-        i_fw, i_aux = fillInFwBw!(fw.tt[i_fw.i_1], fw.tt[i_fw.i],
-                                      fw.yy[i_fw.i_1], fw.yy[i_fw.i],
-                                      bw.yy[i_fw.i_1], bw.yy[i_fw.i],
-                                      fwᵒ, bwᵒ, auxᵒ, aux, i_fw, i_aux,
-                                      sampleCondBB)
-        if i < κ₁+2
-            auxᵒ.yy[i_aux.iᵒ] = sampleBB(auxᵒ.yy[i_aux.iᵒ_1], aux.yy[i_aux.i],
-                                         auxᵒ.tt[i_aux.iᵒ_1], aux.tt[i_aux.i],
-                                         fw.tt[i_fw.i])
-            i_aux = nextᵒ(i_aux)
-        else
-            @assert i_aux.i = κ₂+2
-            auxᵒ.yy[i_aux.iᵒ] = aux.yy[i_aux.i]
-            auxᵒ.tt[i_aux.iᵒ] = fwᵒ.tt[i_fw.iᵒ_1]
-        end
-        i_fw = next(i_fw)
+    while moreLeft(i_fw)
+        i_fw, i_aux = fillInFwBwAux!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, i_fw, i_aux,
+                                     sampleCondBB)
     end
 end
 
+
+"""
+    fillInFwBwAux!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, i_fw, i_aux, fillingFn)
+
+Reveal the forward, backward and auxiliary diffusions at a common time-grid, on
+a segment known not to contain the first crossing time.
+"""
+function fillInFwBwAux!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, i_fw, i_aux, fillingFn)
+    i_fw, i_aux = fillInFwBw!(fw.tt[i_fw.i_1], fw.tt[i_fw.i],
+                              fw.yy[i_fw.i_1], fw.yy[i_fw.i],
+                              bw.yy[i_fw.i_1], bw.yy[i_fw.i],
+                              fwᵒ, bwᵒ, auxᵒ, aux, i_fw, i_aux, fillingFn)
+    if !lastIntv(i_fw)
+        auxᵒ.yy[i_aux.iᵒ] = sampleBB(auxᵒ.yy[i_aux.iᵒ_1], aux.yy[i_aux.i],
+                                     auxᵒ.tt[i_aux.iᵒ_1], aux.tt[i_aux.i],
+                                     fw.tt[i_fw.i])
+        i_aux = nextᵒ(i_aux)
+    else
+        @assert lastIntv(i_aux)
+        auxᵒ.yy[i_aux.iᵒ] = aux.yy[i_aux.i]
+        auxᵒ.tt[i_aux.iᵒ] = fwᵒ.tt[i_fw.iᵒ_1]
+    end
+    i_fw = next(i_fw)
+    i_fw, i_aux
+end
+
+
+"""
+    fillInFwBw!(t0_fw, T_fw, x0_fw, xT_fw, x0_bw, xT_bw, fwᵒ, bwᵒ, auxᵒ, aux,
+                i_fw, i_aux, fillingFn)
+
+Reveal the forward and backward diffusions at all points that the auxliary
+diffusions has already been revealed at on the interval [`t0_fw`, `T_fw`]
+"""
 function fillInFwBw!(t0_fw, T_fw, x0_fw, xT_fw, x0_bw, xT_bw, fwᵒ, bwᵒ,
                          auxᵒ, aux, i_fw, i_aux, fillingFn)
     t = aux.tt[i_aux.i]
@@ -338,12 +363,17 @@ function fillInFwBw!(t0_fw, T_fw, x0_fw, xT_fw, x0_bw, xT_bw, fwᵒ, bwᵒ,
     i_fw, i_aux
 end
 
+"""
+    crossPopulateAuxMid!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, τIdx)
 
+Reveal the forward, backward and auxiliary diffusions at a common time-grid, on
+a segment known to contain the first crossing time.
+"""
 function crossPopulateAuxMid!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, τIdx)
     crossIntv, crossIdx, τ, x_τ = τIdx
 
     κ₁, κ₂ = fw.κ[1], aux.κ[1]
-    resize!(κ₁, κ₂, fwᵒ, bwᵒ, auxᵒ; extra=1)
+    resize!(κ₁+κ₂+1, fwᵒ, bwᵒ, auxᵒ)
 
     i_fw = Idx(1,1,false,κ₁+2)
     i_aux = Idx(1,1,false,κ₂+2)
@@ -351,46 +381,34 @@ function crossPopulateAuxMid!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, τIdx)
     i_fw, i_aux = initSegments!(fwᵒ, auxᵒ, fw, aux, i_fw, i_aux, bwᵒ, bw)
 
     while i_fw.i ≤ crossIdx
-        i_fw, i_aux = fillInFwBwAux!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, i_fw, i_aux, sampleCondBB)
+        i_fw, i_aux = fillInFwBwAux!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, i_fw, i_aux,
+                                     sampleCondBB)
     end
 
     fillInFwBwAuxᵒ!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, i_fw, i_aux, τ, x_τ)
 
     while moreLeft(i_fw)
-        i_fw, i_aux = fillInFwBwAux!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, i_fw, i_aux, sampleBB)
+        i_fw, i_aux = fillInFwBwAux!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, i_fw, i_aux,
+                                     sampleBB)
     end
 end
 
 
-function fillInFwBwAux!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, i_fw, i_aux, fillingFn)
-    i_fw, i_aux = fillInFwBw!(fw.tt[i_fw.i_1], fw.tt[i_fw.i],
-                              fw.yy[i_fw.i_1], fw.yy[i_fw.i],
-                              bw.yy[i_fw.i_1], bw.yy[i_fw.i],
-                              fwᵒ, bwᵒ, auxᵒ, aux, i_fw, i_aux, fillingFn)
-    if !lastIntv(i_fw)
-        auxᵒ.yy[i_aux.iᵒ] = sampleBB(auxᵒ.yy[i_aux.iᵒ_1], aux.yy[i_aux.i],
-                                     auxᵒ.tt[i_aux.iᵒ_1], aux.tt[i_aux.i],
-                                     fw.tt[i_fw.i])
-        i_aux = nextᵒ(i_aux)
-    else
-        @assert lastIntv(i_aux)
-        auxᵒ.yy[i_aux.iᵒ] = aux.yy[i_aux.i]
-        auxᵒ.tt[i_aux.iᵒ] = fwᵒ.tt[i_fw.iᵒ_1]
-    end
-    i_fw = next(i_fw)
-    i_fw, i_aux
-end
+"""
+    fillInFwBwAuxᵒ!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, i_fw, i_aux, τ, x_τ)
 
+Reveal the forward, backward and auxiliary diffusions at a common time-grid, on
+a segment known to contain the first crossing time.
+"""
 function fillInFwBwAuxᵒ!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, i_fw, i_aux, τ, x_τ)
-    i_fw, i_aux = fillInFwBw!(fw.tt[i_fw.i_1], fw.tt[i_fw.i_1] + τ,
-                              fw.yy[i_fw.i_1], x_τ,
-                              bw.yy[i_fw.i_1], x_τ,
+    i_fw, i_aux = fillInFwBw!(fw.tt[i_fw.i_1], τ,
+                              fw.yy[i_fw.i_1], x_τ, bw.yy[i_fw.i_1], x_τ,
                               fwᵒ, bwᵒ, auxᵒ, aux, i_fw, i_aux, sampleBessel)
+
     auxᵒ.yy[i_aux.iᵒ] = sampleBB(auxᵒ.yy[i_aux.iᵒ_1], aux.yy[i_aux.i],
-                                 auxᵒ.tt[i_aux.iᵒ_1], aux.tt[i_aux.i],
-                                 fw.tt[i_fw.i_1] + τ)
+                                 auxᵒ.tt[i_aux.iᵒ_1], aux.tt[i_aux.i], τ)
     i_aux = nextᵒ(i_aux)
-    i_fw, i_aux = fillInFwBw!(fw.tt[i_fw.i_1] + τ, fw.tt[i_fw.i],
+    i_fw, i_aux = fillInFwBw!(τ, fw.tt[i_fw.i],
                               x_τ, fw.yy[i_fw.i], x_τ, bw.yy[i_fw.i],
                               fwᵒ, bwᵒ, auxᵒ, aux, i_fw, i_aux, sampleBB)
     if !lastIntv(i_fw)
