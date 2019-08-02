@@ -10,7 +10,7 @@ struct ConfluentDiffBridge
     prop::Vector{PathSegment}
     aux::Vector{PathSegment}
     auxᵒ::Vector{PathSegment}
-    τIdx::Vector{Tuple{Int64, Int64}}
+    τIdx::Vector{Tuple{Int64, Int64, Float64, Float64}}
 
     function ConfluentDiffBridge(T::Number, numSegments::Integer)
         dt = T/numSegments
@@ -46,23 +46,44 @@ function crossPopulate!(XX::ConfluentDiffBridge)
     end
 end
 
-function crossPopulate!(fw::PathSegment, bw, fwᵒ, bwᵒ, T::Float64)
-    κ₁, κ₂ = fw.κ[1], bw.κ[1]
+
+function resize!(κ₁::Integer, κ₂::Integer, fwᵒ, bwᵒ, auxᵒ=nothing; extra=0)
     κ = κ₁ + κ₂
     resize!(fwᵒ, κ+2)
     resize!(bwᵒ, κ+2)
     fwᵒ.κ[1] = bwᵒ.κ[1] = κ
+    if auxᵒ != nothing
+        auxᵒ.κ[1]
+        resize!(auxᵒ, κ+2)
+    end
+end
+
+
+function initSegments!(seg₁ᵒ, seg₂ᵒ, seg₁, seg₂, i₁₃, i₂, seg₃ᵒ=nothing,
+                      seg₃=nothing)
+    seg₁ᵒ.tt[i₁₃.iᵒ] = seg₂ᵒ.tt[i₂.iᵒ] = seg₁.tt[i₁₃.i]
+    seg₁ᵒ.yy[i₁₃.iᵒ] = seg₁.yy[i₁₃.i]
+    seg₂ᵒ.yy[i₂.iᵒ] = seg₂.yy[i₂.i]
+
+    if seg₃ != nothing
+        seg₃ᵒ.tt[i₁₃.iᵒ] = seg₃.tt[i₁₃.i]
+        seg₃ᵒ.yy[i₁₃.iᵒ] = seg₃.yy[i₁₃.i]
+    end
+
+    i₁₃ = next_nextᵒ(i₁₃)
+    i₂ = next_nextᵒ(i₂)
+    i₁₃, i₂
+end
+
+
+function crossPopulate!(fw::PathSegment, bw, fwᵒ, bwᵒ, T::Float64)
+    κ₁, κ₂ = fw.κ[1], bw.κ[1]
+    resize!(κ₁, κ₂, fwᵒ, bwᵒ)
 
     i_fw = Idx(1,1,false)
     i_bw = Idx(κ₂+2,1,true)
 
-    fwᵒ.tt[i_fw.iᵒ] = bwᵒ.tt[i_bw.iᵒ] = fw.tt[i_fw.i]
-    fwᵒ.yy[i_fw.iᵒ] = fw.yy[i_fw.i]
-    bwᵒ.yy[i_bw.iᵒ] = bw.yy[i_bw.i]
-
-    i_fw = next_nextᵒ(i_fw)
-    i_bw = next_nextᵒ(i_bw)
-
+    i_fw, i_bw = initSegments!(fwᵒ, bwᵒ, fw, bw, i_fw, i_bw)
 
     # iterate over elements of the forward diffusion
     while i_fw.i < κ₁+3
@@ -135,23 +156,30 @@ function diffusionsCross(fwc::PathSegment, bwc::PathSegment)
     return false, nothing, nothing
 end
 
+function copySegments!(copyTo, copyFrom, iRange)
+    for i in iRange
+        resize!(copyTo[i], copyFrom[i].κ[1]+2)
+        copyTo[i] .= copyFrom[i]
+    end
+end
+
+function copyPartOfSegment!(copyTo, copyFrom, iᵒRange, iRange)
+    copyTo.yy[iᵒRange] .= copyFrom.yy[iRange]
+    copyTo.tt[iᵒRange] .= copyFrom.tt[iRange]
+end
+
 
 function buildConcat!((crossIntv, crossIdx), τ, XX::ConfluentDiffBridge)
     N = length(XX)
-    for i in 1:crossIntv-1
-        resize!(XX.prop[i], XX.fwc[i].κ[1]+2)
-        XX.prop[i], XX.fwc[i] = XX.fwc[i], XX.prop[i]
-    end
+    copySegments!(XX.prop, XX.fwc, 1:crossIntv-1)
+
     # re-labeling
-    prop = XX.prop[crossIntv]
-    fw = XX.fwc[crossIntv]
-    bw = XX.bwc[crossIntv]
+    prop, fw, bw = XX.prop[crossIntv], XX.fwc[crossIntv], XX.bwc[crossIntv]
 
     resize!(prop, fw.κ[1]+3) # +2 for start and end point +1 for crossing time
     prop.κ[1] = fw.κ[1]+1
 
-    prop.yy[1:crossIdx] .= fw.yy[1:crossIdx] # copy forward diffusion until crossing
-    prop.tt[1:crossIdx] .= fw.tt[1:crossIdx]
+    copyPartOfSegment!(prop, fw, 1:crossIdx, 1:crossIdx)
 
     s0 = fw.yy[crossIdx] + bw.yy[crossIdx]
     sT = fw.yy[crossIdx+1] + bw.yy[crossIdx+1]
@@ -160,17 +188,11 @@ function buildConcat!((crossIntv, crossIdx), τ, XX::ConfluentDiffBridge)
     prop.tt[crossIdx+1] = fw.tt[crossIdx] + τ
 
     # store crossing info
-    XX.τIdx[1] = (crossIntv, crossIdx)
+    XX.τIdx[1] = (crossIntv, crossIdx, prop.tt[crossIdx+1], prop.yy[crossIdx+1])
 
     # copy backward diffusion from then on
-    iRange = crossIdx+1:prop.κ[1]+1
-    prop.yy[iRange.+1] .= bw.yy[iRange]
-    prop.tt[iRange.+1] .= bw.tt[iRange]
-
-    for i in crossIntv+1:N
-        resize!(XX.prop[i], XX.bwc[i].κ[1]+2)
-        XX.prop[i], XX.bwc[i] = XX.bwc[i], XX.prop[i]
-    end
+    copyPartOfSegment!(prop, bw, crossIdx+2:prop.κ[1]+2, crossIdx+1:prop.κ[1]+1)
+    copySegments!(XX.prop, XX.bwc, crossIntv+1:N)
 end
 
 
@@ -223,23 +245,16 @@ function crossPopulateAux!(XX::ConfluentDiffBridge)
     end
 end
 
+
+
 function crossPopulateAuxLeft!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ)
     κ₁, κ₂ = fw.κ[1], aux.κ[1]
-    κ = κ₁ + κ₂
-    resize!(fwᵒ, κ+2)
-    resize!(bwᵒ, κ+2)
-    resize!(auxᵒ, κ+2)
-    fwᵒ.κ[1] = bwᵒ.κ[1] = auxᵒ.κ[1] = κ
+    resize!(κ₁, κ₂, fwᵒ, bwᵒ, auxᵒ)
 
     i_fw = Idx(1,1,false)
     i_aux = Idx(1,1,false)
 
-    fwᵒ.tt[i_fw.iᵒ] = bwᵒ.tt[i_fw.iᵒ] = auxᵒ.tt[i_aux.iᵒ] = fw.tt[i_fw.i]
-    fwᵒ.yy[i_fw.iᵒ], bwᵒ.yy[i_fw.iᵒ] = fw.yy[i_fw.iᵒ], bw.yy[i_fw.iᵒ]
-    auxᵒ.yy[i_aux.iᵒ] = aux.yy[i_aux.i]
-
-    i_fw = next_nextᵒ(i_fw)
-    i_aux = next_nextᵒ(i_aux)
+    i_fw, i_aux = initSegments!(fwᵒ, auxᵒ, fw, aux, i_fw, i_aux, bwᵒ, bw)
 
     for i in 2:κ₁+2
         i_fw, i_aux = fillInFwBwDiff!(fw.tt[i_fw.i_1], fw.tt[i_fw.i],
@@ -297,23 +312,17 @@ function sampleCondBB()
 end
 
 
+
 function crossPopulateAuxMid!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, τIdx)
+    crossIntv, crossIdx = τIdx
+
     κ₁, κ₂ = fw.κ[1], aux.κ[1]
-    κ = κ₁ + κ₂
-    resize!(fwᵒ, κ+2)
-    resize!(bwᵒ, κ+2)
-    resize!(auxᵒ, κ+2)
-    fwᵒ.κ[1] = bwᵒ.κ[1] = auxᵒ.κ[1] = κ
+    resize!(κ₁, κ₂, fwᵒ, bwᵒ, auxᵒ)
 
     i_fw = Idx(1,1,false)
     i_aux = Idx(1,1,false)
 
-    fwᵒ.tt[i_fw.iᵒ] = bwᵒ.tt[i_fw.iᵒ] = auxᵒ.tt[i_aux.iᵒ] = fw.tt[i_fw.i]
-    fwᵒ.yy[i_fw.iᵒ], bwᵒ.yy[i_fw.iᵒ] = fw.yy[i_fw.iᵒ], bw.yy[i_fw.iᵒ]
-    auxᵒ.yy[i_aux.iᵒ] = aux.yy[i_aux.i]
-
-    i_fw = next_nextᵒ(i_fw)
-    i_aux = next_nextᵒ(i_aux)
+    i_fw, i_aux = initSegments!(fwᵒ, auxᵒ, fw, aux, i_fw, i_aux, bwᵒ, bw)
 
     for i in 2:κ₁+2
         i_fw, i_aux = fillInFwBwDiff!(fw.tt[i_fw.i_1], fw.tt[i_fw.i],
