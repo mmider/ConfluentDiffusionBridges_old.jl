@@ -17,7 +17,7 @@ struct ConfluentDiffBridge
 
         c = [PathSegment((i-1)*dt, dt) for i in 1:numSegments]
         θ = [deepcopy(c) for i in 1:9]
-        τIdx = [(1,1)]
+        τIdx = [(1,1,1.0,1.0)]
 
         new(θ[1], θ[2], θ[3], θ[4], θ[5], θ[6], θ[7], θ[8], θ[9], τIdx)
     end
@@ -191,7 +191,7 @@ function diffusionsCross(fwᵒ::Vector{PathSegment}, bwᵒ::Vector{PathSegment})
             return true, (i, crossIdx), τ, x_τ
         end
     end
-    return false, (nothing, nothing), nothing
+    return false, (nothing, nothing), nothing, nothing
 end
 
 """

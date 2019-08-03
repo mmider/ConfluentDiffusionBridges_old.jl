@@ -4,6 +4,7 @@ OUT_DIR=joinpath(Base.source_dir(), "..", "output")
 mkpath(OUT_DIR)
 
 include(joinpath(SRC_DIR, "types.jl"))
+include(joinpath(SRC_DIR, "indexing.jl"))
 include(joinpath(SRC_DIR, "wiener.jl"))
 include(joinpath(SRC_DIR, "langevin_t_distr_diffusion.jl"))
 include(joinpath(SRC_DIR, "simple_fpt_coin.jl"))
@@ -17,24 +18,11 @@ using Plots
 x₀, xₜ, T = 2.0, 3.3, 4.0
 P = LangevinT(3.0)
 
-
-
-
-
-
-
-
-
-# sample paths using Rejection sampling on a path space
-
-
-
-
-
 # Confluent diffusion bridges
 XX = ConfluentDiffBridge(16.0, 4)
-rand!(XX, P, Proposal(), x₀, xₜ)
-
+for i in 1:1000
+    rand!(XX, P, Proposal(), x₀, xₜ)
+end
 
 function plotMe(i, add=true)
     fw = XX.fw[i]
@@ -62,7 +50,7 @@ end
 
 
 
-plotMe(1, false)
+p = plotMe(1, false)
 plotMe(2)
 plotMe(3)
 plotMe(4)
@@ -71,6 +59,12 @@ plotMeBw(1, 16.0)
 plotMeBw(2, 16.0)
 plotMeBw(3, 16.0)
 plotMeBw(4, 16.0)
+
+scatter!([XX.τ[1][3]],[XX.τ[1][4]])
+
+show(p)
+
+
 
 plotMeProp(1)
 plotMeProp(2)
