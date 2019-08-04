@@ -253,7 +253,8 @@ function rand!(XX::ConfluentDiffBridge, P::ContinuousTimeProcess, ::Auxiliary)
         rand!(XX.aux, P, y) # call to path space rejection sampler
         numAuxSamples += 1
         crossPopulateAux!(XX)
-        auxCross(XX) && return numAuxSamples
+        #auxCross(XX) && return numAuxSamples
+        return true
     end
 end
 
@@ -270,17 +271,18 @@ end
 Reveal the forward, backward and auxiliary diffusions at a common time-grid
 """
 function crossPopulateAux!(XX::ConfluentDiffBridge)
-    crossIntv, _, _, _ = XX.τ
+    crossIntv, _, _, _ = XX.τ[1]
     iᵒ = crossIntv # just shortening the name
+    N = length(XX)
     for i in 1:iᵒ-1
-        crossPopulateAuxLeft!(XX.fwc[i], XX.bwc[i], XX.aux[i], XX.fwcᵒ[i],
-                              XX.bwcᵒ[i], XX.auxᵒ[i])
+        crossPopulateAuxLR!(XX.fwc[i], XX.bwc[i], XX.aux[i], XX.fwcᵒ[i],
+                              XX.bwcᵒ[i], XX.auxᵒ[i], sampleCondBB)
     end
     crossPopulateAuxMid!(XX.fwc[iᵒ], XX.bwc[iᵒ], XX.aux[iᵒ], XX.fwcᵒ[iᵒ],
-                         XX.bwcᵒ[iᵒ], XX.auxᵒ[iᵒ], XX.τ)
+                         XX.bwcᵒ[iᵒ], XX.auxᵒ[iᵒ], XX.τ[1])
     for i in iᵒ+1:N
-        crossPopulateAuxRight!(XX.fwc[i], XX.bwc[i], XX.aux[i], XX.fwcᵒ[i],
-                               XX.bwcᵒ[i], XX.auxᵒ[i])
+        crossPopulateAuxLR!(XX.fwc[i], XX.bwc[i], XX.aux[i], XX.fwcᵒ[i],
+                               XX.bwcᵒ[i], XX.auxᵒ[i], sampleBB)
     end
 end
 
@@ -291,7 +293,7 @@ end
 Reveal the forward, backward and auxiliary diffusions at a common time-grid, on
 a segment known to be lying to the left of the first crossing time.
 """
-function crossPopulateAuxLeft!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ)
+function crossPopulateAuxLR!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, fillingFn)
     κ₁, κ₂ = fw.κ[1], aux.κ[1]
     resize!(κ₁+κ₂, fwᵒ, bwᵒ, auxᵒ)
 
@@ -302,7 +304,7 @@ function crossPopulateAuxLeft!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ)
 
     while moreLeft(i_fw)
         i_fw, i_aux = fillInFwBwAux!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, i_fw, i_aux,
-                                     sampleCondBB)
+                                     fillingFn)
     end
 end
 
@@ -391,7 +393,7 @@ function crossPopulateAuxMid!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, τIdx)
                                      sampleCondBB)
     end
 
-    fillInFwBwAuxᵒ!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, i_fw, i_aux, τ, x_τ)
+    i_fw, i_aux = fillInFwBwAuxᵒ!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, i_fw, i_aux, τ, x_τ)
 
     while moreLeft(i_fw)
         i_fw, i_aux = fillInFwBwAux!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, i_fw, i_aux,
@@ -429,6 +431,10 @@ function fillInFwBwAuxᵒ!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, i_fw, i_aux, τ, x
     end
     i_fw = next(i_fw)
     i_fw, i_aux
+end
+
+function sampleBB(x0_fw, xT_fw, x0_bw, xT_bw, t0_fw, T_fw, t)
+    sampleBB(x0_fw, xT_fw, t0_fw, T_fw, t), sampleBB(x0_bw, xT_bw, t0_fw, T_fw, t)
 end
 
 
@@ -477,4 +483,10 @@ function sampleBesselBridge(x0, t0, T, t; σ=1.0)
     x⁽³⁾_t -= θₜ * x⁽³⁾_T
 
     √((x⁽¹⁾_t + x0*(1.0-θₜ))^2 + x⁽²⁾_t^2 + x⁽³⁾_t^2)
+end
+
+
+function simpleCrossing(XX::ConfluentDiffBridge)
+    N = length(XX)
+
 end
