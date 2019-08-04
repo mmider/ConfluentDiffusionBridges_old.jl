@@ -253,15 +253,14 @@ function rand!(XX::ConfluentDiffBridge, P::ContinuousTimeProcess, ::Auxiliary)
         rand!(XX.aux, P, y) # call to path space rejection sampler
         numAuxSamples += 1
         crossPopulateAux!(XX)
-        #auxCross(XX) && return numAuxSamples
-        return true
+        auxCross(XX) && return numAuxSamples
     end
 end
 
 
 function auxCross(XX::ConfluentDiffBridge)
-    diffsCross = ( simpleCrossing(XX) || rand(Acoin(), XX)
-                   || rand(Bcoin(), XX) || rand(Coin(), XX) )
+    diffsCross = ( simpleCrossing(XX))# || rand(Acoin(), XX)
+                   #|| rand(Bcoin(), XX) || rand(Coin(), XX) )
     return diffsCross
 end
 
@@ -448,7 +447,7 @@ function sampleCondBB(x0_fw, xT_fw, x0_bw, xT_bw, t0_fw, T_fw, t)
         xt_bw = sampleBB(x0_bw, xT_bw, t0_fw, T_fw, t)
         dt = xt_fw-xt_bw
         if (sign(x0_fw-x0_bw) == sign(xt_fw-xt_bw) &&
-            !rand(Doin(), d0, dt, t₁) && !rand(Dcoin(), d0, dt, t₂))
+            !rand(Dcoin(), d0, dt, t₁) && !rand(Dcoin(), d0, dt, t₂))
             return xt_fw, xt_bw
         end
     end
@@ -488,5 +487,26 @@ end
 
 function simpleCrossing(XX::ConfluentDiffBridge)
     N = length(XX)
+    iᵒ = XX.τ[1][1]
+    τIdx = XX.τ[1][2]
+    for i in 1:iᵒ-1
+        simpleCrossing(XX.fwcᵒ[i], XX.auxᵒ[i], 1:XX.fwcᵒ[i].κ[1]+1) && return true
+    end
+    simpleCrossing(XX.fwcᵒ[iᵒ], XX.auxᵒ[iᵒ], 1:τIdx) && return true
+    simpleCrossing(XX.bwcᵒ[iᵒ], XX.auxᵒ[iᵒ], τIdx+1:XX.bwcᵒ[iᵒ].κ[1]+1) && return true
+    for i in iᵒ+1:N
+        simpleCrossing(XX.bwcᵒ[i], XX.auxᵒ[i], 1:XX.bwcᵒ[i].κ[1]+1) && return true
+    end
+    return false
+end
 
+
+function simpleCrossing(seg₁::PathSegment, seg₂::PathSegment, iRange)
+    for i in iRange
+        if ((seg₁.yy[i] ≤ seg₂.yy[i] && seg₁.yy[i+1] ≥ seg₂.yy[i+1]) ||
+            (seg₁.yy[i] ≥ seg₂.yy[i] && seg₁.yy[i+1] ≤ seg₂.yy[i+1]))
+            return true
+        end
+    end
+    return false
 end

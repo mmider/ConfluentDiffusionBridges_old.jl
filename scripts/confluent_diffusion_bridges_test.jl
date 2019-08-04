@@ -41,13 +41,6 @@ function plotMeBw(i, T)
     p
 end
 
-function plotMeProp(i)
-    prop = XX.prop[i]
-    κ = prop.κ[1]
-    p = scatter!(prop.tt[1:κ+2], prop.yy[1:κ+2], color="orange", label="", alpha=0.7)
-    p
-end
-
 
 
 p = plotMe(1, false)
@@ -66,4 +59,48 @@ show(p)
 
 # Let's test auxiliary sampler now
 Random.seed!(4)
-rand!(XX, P, Auxiliary())
+samples = zeros(Int64, 10000)
+for i in 1:10000
+    samples[i] = rand!(XX, P, Auxiliary())
+end
+samples[samples.≥5]
+
+function plotMeᵒ(i, add=true)
+    fw = XX.fwcᵒ[i]
+    κ = fw.κ[1]
+    if add
+        p = scatter!(fw.tt[1:κ+2], fw.yy[1:κ+2], color="steelblue", label="", alpha=0.5)
+    else
+        p = scatter(fw.tt[1:κ+2], fw.yy[1:κ+2], color="steelblue", label="", alpha=0.5)
+    end
+    p
+end
+function plotMeBwᵒ(i)
+    bw = XX.bwcᵒ[i]
+    κ = bw.κ[1]
+    p = scatter!(bw.tt[1:κ+2], bw.yy[1:κ+2], color="red", label="", alpha=0.5)
+    p
+end
+function plotMeAuxᵒ(i)
+    aux = XX.auxᵒ[i]
+    κ = aux.κ[1]
+    p = scatter!(aux.tt[1:κ+2], aux.yy[1:κ+2], color="violet", label="", alpha=0.5)
+    p
+end
+XX.fwcᵒ[1]
+
+p = plotMeᵒ(1, false)
+plotMeᵒ(2)
+plotMeᵒ(3)
+plotMeᵒ(4)
+
+plotMeBwᵒ(1)
+plotMeBwᵒ(2)
+plotMeBwᵒ(3)
+plotMeBwᵒ(4)
+scatter!([XX.τ[1][3]],[XX.τ[1][4]])
+
+plotMeAuxᵒ(1)
+plotMeAuxᵒ(2)
+plotMeAuxᵒ(3)
+plotMeAuxᵒ(4)
