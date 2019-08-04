@@ -22,9 +22,10 @@ struct LangevinT <: ContinuousTimeProcess{Float64}
     ω::Vector{Float64}
     N::Int64
 
-    function LangevinT(v)
+    function LangevinT(v, λ=0.0)
+        @assert λ ≥ 0.0
         lowBd = -0.25*(v+1.0)/v
-        upBd = 0.03125*(v+1.0)*(v+3.0)^2/(v^2+5.0*v) - lowBd
+        upBd = 0.03125*(v+1.0)*(v+3.0)^2/(v^2+5.0*v) - lowBd + λ
 
         d₁ = √(3.0*v)
         d₂ = (v+1.0)/√v

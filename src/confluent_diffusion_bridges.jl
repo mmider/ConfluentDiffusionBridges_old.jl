@@ -43,7 +43,7 @@ function rand!(XX::ConfluentDiffBridge, P::ContinuousTimeProcess, ::Proposal,
         rand!(XX.fw, P, x0) # call to path space rejection sampler
         rand!(XX.bw, P, xT)
         crossPopulate!(XX)
-        diffsCross, crossIdx, τ, x_τ = diffusionsCross(XX.fw, XX.bw)
+        diffsCross, crossIdx, τ, x_τ = diffusionsCross(XX.fwc, XX.bwc)
         diffsCross && (XX.τ[1] = (crossIdx..., τ, x_τ))
     end
 end
@@ -79,6 +79,8 @@ segment, so that on this segment they are both revealed on a common time-grid.
 function crossPopulate!(fw::PathSegment, bw, fwᵒ, bwᵒ, T::Float64)
     κ₁, κ₂ = fw.κ[1], bw.κ[1]
     resize!(κ₁+κ₂, fwᵒ, bwᵒ)
+    #print("cross population.\nfw.tt: ", fw.tt[1:κ₁+2], ", fw.yy: ", fw.yy[1:κ₁+2],
+    #      "\nbw.tt: ", T.-reverse(bw.tt[1:κ₂+2]), ", bw.yy: ", bw.yy[1:κ₂+2], ".\n")
 
     i_fw = Idx(1,1,false,κ₁+2)
     i_bw = Idx(κ₂+2,1,true,1)
@@ -102,6 +104,7 @@ function crossPopulate!(fw::PathSegment, bw, fwᵒ, bwᵒ, T::Float64)
         end
         i_fw = next(i_fw)
     end
+    #print("spliced fwᵒ.tt: ", fwᵒ.tt[1:κ₁+κ₂+2], "\n\n")
 end
 
 """
@@ -203,6 +206,8 @@ left
 """
 function diffusionsCross(fwᵒ::PathSegment, bwᵒ::PathSegment)
     N = fwᵒ.κ[1] + 2
+    #print("fwᵒ.tt: ", fwᵒ.tt[1:N], ", fwᵒ.yy: ", fwᵒ.yy[1:N], "\n")
+    #print("bwᵒ.tt: ", bwᵒ.tt[1:N], ", bwᵒ.yy: ", bwᵒ.yy[1:N], "\n")
     for i in 1:N-1
         d0 = fwᵒ.yy[i] - bwᵒ.yy[i]
         dT = fwᵒ.yy[i+1] - bwᵒ.yy[i+1]
@@ -212,6 +217,7 @@ function diffusionsCross(fwᵒ::PathSegment, bwᵒ::PathSegment)
             sT = fwᵒ.yy[i+1] + bwᵒ.yy[i+1]
             τ = rand(τᴰ(), d0, dT, T)
             x_τ = 0.5*sampleBB(s0, sT, 0.0, T, τ; σ=√2.0)
+            #print("crossing at: (τ,x_τ)=(", fwᵒ.tt[i] + τ, ", ", x_τ, ")\n\n")
             return true, i, fwᵒ.tt[i] + τ, x_τ
         end
     end

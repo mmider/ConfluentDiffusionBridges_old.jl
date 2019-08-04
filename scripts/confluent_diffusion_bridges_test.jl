@@ -20,9 +20,8 @@ P = LangevinT(3.0)
 
 # Confluent diffusion bridges
 XX = ConfluentDiffBridge(16.0, 4)
-for i in 1:1000
-    rand!(XX, P, Proposal(), x₀, xₜ)
-end
+
+rand!(XX, P, Proposal(), x₀, xₜ)
 
 function plotMe(i, add=true)
     fw = XX.fw[i]
