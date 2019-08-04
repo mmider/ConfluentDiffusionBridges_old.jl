@@ -100,6 +100,27 @@ of coins (Bernoulli random variables)
 abstract type Coin end
 
 """
+    Acoin <: Coin
+
+Flag indicating p_A coin
+"""
+struct Acoin <: Coin end
+
+"""
+    Bcoin <: Coin
+
+Flag indicating p_B coin
+"""
+struct Bcoin <: Coin end
+
+"""
+    Ccoin <: Coin
+
+Flag indicating p_C coin
+"""
+struct Ccoin <: Coin end
+
+"""
     Dcoin <: Coin
 
 Flag indicating p_D coin---probability that a scaled Brownian bridge crosses 0
