@@ -7,7 +7,6 @@ struct ConfluentDiffBridge
     bw::Vector{PathSegment}
     bwc::Vector{PathSegment}
     bwcᵒ::Vector{PathSegment}
-    prop::Vector{PathSegment}
     aux::Vector{PathSegment}
     auxᵒ::Vector{PathSegment}
     τ::Vector{Tuple{Int64, Int64, Float64, Float64}}
@@ -18,11 +17,11 @@ struct ConfluentDiffBridge
         dt = T/numSegments
 
         c = [PathSegment((i-1)*dt, dt) for i in 1:numSegments]
-        θ = [deepcopy(c) for i in 1:9]
+        θ = [deepcopy(c) for i in 1:8]
         τIdx = [(1,1,1.0,1.0)]
         τIdxᵒ = [(1,1,1.0,1.0)]
 
-        new(θ[1], θ[2], θ[3], θ[4], θ[5], θ[6], θ[7], θ[8], θ[9], τIdx, τIdxᵒ,
+        new(θ[1], θ[2], θ[3], θ[4], θ[5], θ[6], θ[7], θ[8], τIdx, τIdxᵒ,
             CoinContainer())
     end
 end
@@ -83,8 +82,6 @@ segment, so that on this segment they are both revealed on a common time-grid.
 function crossPopulate!(fw::PathSegment, bw, fwᵒ, bwᵒ, T::Float64)
     κ₁, κ₂ = fw.κ[1], bw.κ[1]
     resize!(κ₁+κ₂, fwᵒ, bwᵒ)
-    #print("cross population.\nfw.tt: ", fw.tt[1:κ₁+2], ", fw.yy: ", fw.yy[1:κ₁+2],
-    #      "\nbw.tt: ", T.-reverse(bw.tt[1:κ₂+2]), ", bw.yy: ", bw.yy[1:κ₂+2], ".\n")
 
     i_fw = Idx(1,1,false,κ₁+2)
     i_bw = Idx(κ₂+2,1,true,1)
@@ -94,8 +91,8 @@ function crossPopulate!(fw::PathSegment, bw, fwᵒ, bwᵒ, T::Float64)
     # iterate over elements of the forward diffusion
     while moreLeft(i_fw)
         i_fw, i_bw = fillInFw!(fw.tt[i_fw.i_1], fw.tt[i_fw.i],
-                                        fw.yy[i_fw.i_1], fw.yy[i_fw.i],
-                                        fwᵒ, bwᵒ, bw, i_fw, i_bw, T)
+                               fw.yy[i_fw.i_1], fw.yy[i_fw.i],
+                               fwᵒ, bwᵒ, bw, i_fw, i_bw, T)
         if !lastIntv(i_fw)
             bwᵒ.yy[i_bw.iᵒ] = sampleBB(bwᵒ.yy[i_bw.iᵒ_1], bw.yy[i_bw.i],
                                        bwᵒ.tt[i_bw.iᵒ_1], T-bw.tt[i_bw.i],
@@ -108,7 +105,6 @@ function crossPopulate!(fw::PathSegment, bw, fwᵒ, bwᵒ, T::Float64)
         end
         i_fw = next(i_fw)
     end
-    #print("spliced fwᵒ.tt: ", fwᵒ.tt[1:κ₁+κ₂+2], "\n\n")
 end
 
 """
@@ -210,18 +206,15 @@ left
 """
 function diffusionsCross(fwᵒ::PathSegment, bwᵒ::PathSegment)
     N = fwᵒ.κ[1] + 2
-    #print("fwᵒ.tt: ", fwᵒ.tt[1:N], ", fwᵒ.yy: ", fwᵒ.yy[1:N], "\n")
-    #print("bwᵒ.tt: ", bwᵒ.tt[1:N], ", bwᵒ.yy: ", bwᵒ.yy[1:N], "\n")
     for i in 1:N-1
         d0 = fwᵒ.yy[i] - bwᵒ.yy[i]
         dT = fwᵒ.yy[i+1] - bwᵒ.yy[i+1]
         T = fwᵒ.tt[i+1] - fwᵒ.tt[i]
-        if sign(d0) != sign(dT) || rand(Dcoin(), d0, dT, T)
+        if rand(Dcoin(), d0, dT, T)
             s0 = fwᵒ.yy[i] + bwᵒ.yy[i]
             sT = fwᵒ.yy[i+1] + bwᵒ.yy[i+1]
             τ = rand(τᴰ(), d0, dT, T)
             x_τ = 0.5*sampleBB(s0, sT, 0.0, T, τ; σ=√2.0)
-            #print("crossing at: (τ,x_τ)=(", fwᵒ.tt[i] + τ, ", ", x_τ, ")\n\n")
             return true, i, fwᵒ.tt[i] + τ, x_τ
         end
     end
@@ -239,7 +232,7 @@ interval [`t0`,`T`] at time `t`
 function sampleBB(x0::Float64, xT::Float64, t0::Float64, T::Float64, t::Float64;
                   σ=1.0)
     midPt = σ*√(t-t0)*randn(Float64)
-    endPt = midPt + σ*√(T-t0)*randn(Float64)
+    endPt = midPt + σ*√(T-t)*randn(Float64)
     midPt += x0*(T-t)/(T-t0) + (xT-endPt)*(t-t0)/(T-t0)
     midPt
 end
@@ -250,21 +243,23 @@ end
 Sample auxiliary diffusions according to the law `P` until the first one that
 hits the proposal path stored inside the container `XX`
 """
-function rand!(XX::ConfluentDiffBridge, P::ContinuousTimeProcess, ::Auxiliary)
+function rand!(XX::ConfluentDiffBridge, P::ContinuousTimeProcess, ::Auxiliary; cutoff=Inf)
     numAuxSamples = 0
     while true
         y = rand(P, Invariant())
-        rand!(XX.aux, P, y) # call to path space rejection sampler
         numAuxSamples += 1
-        crossPopulateAux!(XX)
-        auxCross(XX) && return numAuxSamples
+        if abs(y) < cutoff # fast rejection (for numerical purposes)
+            rand!(XX.aux, P, y) # call to path space rejection sampler
+            crossPopulateAux!(XX)
+            auxCross(XX) && return numAuxSamples
+        end
     end
 end
 
 
 function auxCross(XX::ConfluentDiffBridge)
-    diffsCross = ( simpleCrossing(XX) || rand(Acoin(), XX)
-                   || rand!(Bcoin(), XX.coin, XX) || rand!(Ccoin(), XX.coin, XX) )
+    diffsCross = ( simpleCrossing(XX))# || rand(Acoin(), XX))
+                   #|| rand!(Bcoin(), XX.coin, XX) || rand!(Ccoin(), XX.coin, XX) )
     return diffsCross
 end
 
@@ -274,8 +269,7 @@ end
 Reveal the forward, backward and auxiliary diffusions at a common time-grid
 """
 function crossPopulateAux!(XX::ConfluentDiffBridge)
-    crossIntv, _, _, _ = XX.τ[1]
-    iᵒ = crossIntv # just shortening the name
+    iᵒ, _, _, _ = XX.τ[1]
     N = length(XX)
     for i in 1:iᵒ-1
         crossPopulateAuxLR!(XX.fwc[i], XX.bwc[i], XX.aux[i], XX.fwcᵒ[i],
@@ -454,8 +448,8 @@ function sampleCondBB(x0_fw, xT_fw, x0_bw, xT_bw, t0_fw, T_fw, t)
         xt_fw = sampleBB(x0_fw, xT_fw, t0_fw, T_fw, t)
         xt_bw = sampleBB(x0_bw, xT_bw, t0_fw, T_fw, t)
         dt = xt_fw-xt_bw
-        if (sign(x0_fw-x0_bw) == sign(xt_fw-xt_bw) &&
-            !rand(Dcoin(), d0, dt, t₁) && !rand(Dcoin(), d0, dt, t₂))
+        if ( sign(d0) == sign(dt) && !rand(Dcoin(), d0, dt, t₁)
+             && !rand(Dcoin(), dt, dT, t₂) )
             return xt_fw, xt_bw
         end
     end
@@ -463,7 +457,7 @@ end
 
 function sampleBessel(x0_fw, xT_fw, x0_bw, xT_bw, t0_fw, T_fw, t)
     s0 = x0_fw + x0_bw
-    sT = xT_bw + xT_bw
+    sT = xT_fw + xT_bw
     st = sampleBB(s0, sT, t0_fw, T_fw, t; σ=√2.0)
 
     dsign = sign(x0_fw - x0_bw)
@@ -495,13 +489,13 @@ end
 
 function simpleCrossing(XX::ConfluentDiffBridge)
     N = length(XX)
-    iᵒ = XX.τ[1][1]
-    τIdx = XX.τ[1][2]
+    iᵒ = XX.τᵒ[1][1]
+    τIdx = XX.τᵒ[1][2]
     for i in 1:iᵒ-1
         simpleCrossing(XX.fwcᵒ[i], XX.auxᵒ[i], 1:XX.fwcᵒ[i].κ[1]+1) && return true
     end
-    simpleCrossing(XX.fwcᵒ[iᵒ], XX.auxᵒ[iᵒ], 1:τIdx) && return true
-    simpleCrossing(XX.bwcᵒ[iᵒ], XX.auxᵒ[iᵒ], τIdx+1:XX.bwcᵒ[iᵒ].κ[1]+1) && return true
+    simpleCrossing(XX.fwcᵒ[iᵒ], XX.auxᵒ[iᵒ], 1:τIdx-1) && return true
+    simpleCrossing(XX.bwcᵒ[iᵒ], XX.auxᵒ[iᵒ], τIdx:XX.bwcᵒ[iᵒ].κ[1]+1) && return true
     for i in iᵒ+1:N
         simpleCrossing(XX.bwcᵒ[i], XX.auxᵒ[i], 1:XX.bwcᵒ[i].κ[1]+1) && return true
     end
@@ -520,7 +514,7 @@ function simpleCrossing(seg₁::PathSegment, seg₂::PathSegment, iRange)
 end
 
 
-function path(XX::ConfluentDiffBridge, tt)
+function path!(XX::ConfluentDiffBridge, tt)
     set_artificial_aux!(XX, tt)
     crossPopulateAux!(XX)
     yy = zeros(Float64, length(tt))
