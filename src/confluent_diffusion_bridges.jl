@@ -11,6 +11,7 @@ struct ConfluentDiffBridge
     aux::Vector{PathSegment}
     auxᵒ::Vector{PathSegment}
     τ::Vector{Tuple{Int64, Int64, Float64, Float64}}
+    τᵒ::Vector{Tuple{Int64, Int64, Float64, Float64}}
     coin::CoinContainer
 
     function ConfluentDiffBridge(T::Number, numSegments::Integer)
@@ -19,8 +20,9 @@ struct ConfluentDiffBridge
         c = [PathSegment((i-1)*dt, dt) for i in 1:numSegments]
         θ = [deepcopy(c) for i in 1:9]
         τIdx = [(1,1,1.0,1.0)]
+        τIdxᵒ = [(1,1,1.0,1.0)]
 
-        new(θ[1], θ[2], θ[3], θ[4], θ[5], θ[6], θ[7], θ[8], θ[9], τIdx,
+        new(θ[1], θ[2], θ[3], θ[4], θ[5], θ[6], θ[7], θ[8], θ[9], τIdx, τIdxᵒ,
             CoinContainer())
     end
 end
@@ -279,7 +281,7 @@ function crossPopulateAux!(XX::ConfluentDiffBridge)
         crossPopulateAuxLR!(XX.fwc[i], XX.bwc[i], XX.aux[i], XX.fwcᵒ[i],
                               XX.bwcᵒ[i], XX.auxᵒ[i], sampleCondBB)
     end
-    crossPopulateAuxMid!(XX.fwc[iᵒ], XX.bwc[iᵒ], XX.aux[iᵒ], XX.fwcᵒ[iᵒ],
+    crossPopulateAuxMid!(XX, XX.fwc[iᵒ], XX.bwc[iᵒ], XX.aux[iᵒ], XX.fwcᵒ[iᵒ],
                          XX.bwcᵒ[iᵒ], XX.auxᵒ[iᵒ], XX.τ[1])
     for i in iᵒ+1:N
         crossPopulateAuxLR!(XX.fwc[i], XX.bwc[i], XX.aux[i], XX.fwcᵒ[i],
@@ -378,7 +380,7 @@ end
 Reveal the forward, backward and auxiliary diffusions at a common time-grid, on
 a segment known to contain the first crossing time.
 """
-function crossPopulateAuxMid!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, τIdx)
+function crossPopulateAuxMid!(XX, fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, τIdx)
     crossIntv, crossIdx, τ, x_τ = τIdx
 
     κ₁, κ₂ = fw.κ[1], aux.κ[1]
@@ -394,7 +396,10 @@ function crossPopulateAuxMid!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, τIdx)
                                      sampleCondBB)
     end
 
-    i_fw, i_aux = fillInFwBwAuxᵒ!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, i_fw, i_aux, τ, x_τ)
+    i_fw, i_aux, idx_of_τ = fillInFwBwAuxᵒ!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, i_fw,
+                                            i_aux, τ, x_τ)
+
+    XX.τᵒ[1] = crossIntv, idx_of_τ, τ, x_τ
 
     while moreLeft(i_fw)
         i_fw, i_aux = fillInFwBwAux!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, i_fw, i_aux,
@@ -416,6 +421,7 @@ function fillInFwBwAuxᵒ!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, i_fw, i_aux, τ, x
 
     auxᵒ.yy[i_aux.iᵒ] = sampleBB(auxᵒ.yy[i_aux.iᵒ_1], aux.yy[i_aux.i],
                                  auxᵒ.tt[i_aux.iᵒ_1], aux.tt[i_aux.i], τ)
+    idx_of_τ = i_aux.iᵒ
     i_aux = nextᵒ(i_aux)
     i_fw, i_aux = fillInFwBw!(τ, fw.tt[i_fw.i],
                               x_τ, fw.yy[i_fw.i], x_τ, bw.yy[i_fw.i],
@@ -431,7 +437,7 @@ function fillInFwBwAuxᵒ!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, i_fw, i_aux, τ, x
         auxᵒ.tt[i_aux.iᵒ] = fwᵒ.tt[i_fw.iᵒ_1]
     end
     i_fw = next(i_fw)
-    i_fw, i_aux
+    i_fw, i_aux, idx_of_τ
 end
 
 function sampleBB(x0_fw, xT_fw, x0_bw, xT_bw, t0_fw, T_fw, t)
@@ -511,4 +517,62 @@ function simpleCrossing(seg₁::PathSegment, seg₂::PathSegment, iRange)
         end
     end
     return false
+end
+
+
+function path(XX::ConfluentDiffBridge, tt)
+    set_artificial_aux!(XX, tt)
+    crossPopulateAux!(XX)
+    yy = zeros(Float64, length(tt))
+    iᵒ, τIdx, _, _ = XX.τᵒ[1]
+    N = length(XX)
+    idx = 1
+    ttᵒ = zeros(Float64, 0)
+    yyᵒ = zeros(Float64, 0)
+    for i in 1:iᵒ-1
+        fw = XX.fwcᵒ[i]
+        M = fw.κ[1]+1
+        ttᵒ = vcat(ttᵒ, fw.tt[1:M])
+        yyᵒ = vcat(yyᵒ, fw.yy[1:M])
+    end
+    fw = XX.fwcᵒ[iᵒ]
+    ttᵒ = vcat(ttᵒ, fw.tt[1:τIdx])
+    yyᵒ = vcat(yyᵒ, fw.yy[1:τIdx])
+
+    bw = XX.bwcᵒ[iᵒ]
+    M = bw.κ[1]+1
+    ttᵒ = vcat(ttᵒ, bw.tt[τIdx:M])
+    yyᵒ = vcat(yyᵒ, bw.yy[τIdx:M])
+
+    for i in iᵒ+1:N
+        bw = XX.bwcᵒ[i]
+        M = bw.κ[1]+1
+        ttᵒ = vcat(ttᵒ, bw.tt[1:M])
+        yyᵒ = vcat(yyᵒ, bw.yy[1:M])
+    end
+    bw = XX.bwcᵒ[end]
+    ttᵒ = vcat(ttᵒ, bw.tt[bw.κ[1]+2])
+    yyᵒ = vcat(yyᵒ, bw.yy[bw.κ[1]+2])
+    ttᵒ, yyᵒ
+end
+
+
+function set_artificial_aux!(XX::ConfluentDiffBridge, tt)
+    N = length(XX)
+    for i in 1:N
+        fw = XX.fwc[i]
+        t₀, T = fw.tt[1], fw.tt[fw.κ[1]+2]
+        ttᵒ = tt[t₀ .≤ tt .≤ T]
+        if t₀ != ttᵒ[1]
+            ttᵒ = vcat(t₀, ttᵒ)
+        end
+        if T != ttᵒ[end]
+            ttᵒ = vcat(ttᵒ, T)
+        end
+        M = length(ttᵒ)
+        resize!(XX.aux[i], M)
+        XX.aux[i].tt[1:M] .= ttᵒ
+        XX.aux[i].yy[1:M] .= 0.0
+        XX.aux[i].κ[1] = M-2
+    end
 end

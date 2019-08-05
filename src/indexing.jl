@@ -24,7 +24,6 @@ next(idx::Idx{Val{false}}) = Idx(idx, 1, 0)
 next_nextᵒ(idx::Idx{Val{true}}) = Idx(idx, -1, 1)
 next_nextᵒ(idx::Idx{Val{false}}) = Idx(idx, 1, 1)
 
-
 lastIntv(idx::Idx) = idx.i == idx.i_bd
 
 moreLeft(idx::Idx{Val{true}}) = idx.i ≥ idx.i_bd

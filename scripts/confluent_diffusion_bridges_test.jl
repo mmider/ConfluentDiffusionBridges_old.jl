@@ -36,7 +36,7 @@ function plotMe(i, add=true)
     end
     p
 end
-function plotMeBw(i, T)
+function plotMeBw(i)
     bw = XX.bwc[i]
     κ = bw.κ[1]
     p = scatter!(bw.tt[1:κ+2], bw.yy[1:κ+2], color="red", label="", alpha=0.5)
@@ -50,10 +50,10 @@ plotMe(2)
 plotMe(3)
 plotMe(4)
 
-plotMeBw(1, 16.0)
-plotMeBw(2, 16.0)
-plotMeBw(3, 16.0)
-plotMeBw(4, 16.0)
+plotMeBw(1)
+plotMeBw(2)
+plotMeBw(3)
+plotMeBw(4)
 
 scatter!([XX.τ[1][3]],[XX.τ[1][4]])
 show(p)
@@ -68,20 +68,12 @@ for i in 1:N
 end
 probs = [length(samples[samples.≥i])/N for i in 2:8]
 
-total = 0
-for i in 1:1000
-    global total += rand!(Bcoin(), cc, temp₁...)
-end
-total
-for i in 1:1000
-    global total += rand!(Bcoin(), cc, temp₂...)
-end
-total
-
 Random.seed!(4)
 
 rand!(XX, P, Auxiliary())
-1.0
+
+ttᵒ, yyᵒ = path(XX, 0.0:0.01:16.0)
+plot!(ttᵒ, yyᵒ)
 
 function plotMeᵒ(i, add=true)
     fw = XX.fwcᵒ[i]

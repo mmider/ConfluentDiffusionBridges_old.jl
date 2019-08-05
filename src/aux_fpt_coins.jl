@@ -2,10 +2,10 @@ import Random.rand
 import SpecialFunctions.gamma
 
 function rand(::Acoin, XX::ConfluentDiffBridge)
-    iᵒ = XX.τ[1][1]
-    τIdx = XX.τ[1][2]
+    iᵒ = XX.τᵒ[1][1]
+    τIdx = XX.τᵒ[1][2]
     N = length(XX)
-    rand(Acoin(), XX.bwcᵒ[iᵒ], XX.auxᵒ[iᵒ], τIdx+1:XX.bwcᵒ[iᵒ].κ[1]+1) && return true
+    rand(Acoin(), XX.bwcᵒ[iᵒ], XX.auxᵒ[iᵒ], τIdx:XX.bwcᵒ[iᵒ].κ[1]+1) && return true
     for i in iᵒ+1:N
         rand(Acoin(), XX.bwcᵒ[i], XX.auxᵒ[i], 1:XX.bwcᵒ[i].κ[1]+1) && return true
     end
@@ -23,19 +23,19 @@ function rand(::Acoin, A::PathSegment, B::PathSegment, iRange)
 end
 
 function rand!(pB::Bcoin, cc::CoinContainer, XX::ConfluentDiffBridge)
-    iᵒ = XX.τ[1][1]
-    τIdx = XX.τ[1][2]
+    iᵒ = XX.τᵒ[1][1]
+    τIdx = XX.τᵒ[1][2]
     for i in 1:iᵒ-1
         rand!(pB, XX.fwcᵒ[i], XX.bwcᵒ[i], XX.auxᵒ[i], cc, 1:XX.fwcᵒ[i].κ[1]+1) && return true
     end
-    rand!(pB, XX.fwcᵒ[iᵒ], XX.bwcᵒ[iᵒ], XX.auxᵒ[iᵒ], cc, 1:τIdx-1) && return true
+    rand!(pB, XX.fwcᵒ[iᵒ], XX.bwcᵒ[iᵒ], XX.auxᵒ[iᵒ], cc, 1:τIdx-2) && return true
     return false
 end
 
 function rand!(pC::Ccoin, cc::CoinContainer, XX::ConfluentDiffBridge)
-    iᵒ = XX.τ[1][1]
-    τIdx = XX.τ[1][2]
-    return rand!(pC, XX.fwcᵒ[iᵒ], XX.bwcᵒ[iᵒ], XX.auxᵒ[iᵒ], cc, τIdx:τIdx)
+    iᵒ = XX.τᵒ[1][1]
+    τIdx = XX.τᵒ[1][2]
+    return rand!(pC, XX.fwcᵒ[iᵒ], XX.bwcᵒ[iᵒ], XX.auxᵒ[iᵒ], cc, τIdx-1:τIdx-1)
 end
 
 
