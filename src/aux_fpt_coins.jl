@@ -1,7 +1,6 @@
 import Random.rand
 import SpecialFunctions.gamma
 
-
 function rand(::Acoin, XX::ConfluentDiffBridge)
     iᵒ = XX.τ[1][1]
     τIdx = XX.τ[1][2]
@@ -30,12 +29,13 @@ function rand!(pB::Bcoin, cc::CoinContainer, XX::ConfluentDiffBridge)
         rand!(pB, XX.fwcᵒ[i], XX.bwcᵒ[i], XX.auxᵒ[i], cc, 1:XX.fwcᵒ[i].κ[1]+1) && return true
     end
     rand!(pB, XX.fwcᵒ[iᵒ], XX.bwcᵒ[iᵒ], XX.auxᵒ[iᵒ], cc, 1:τIdx-1) && return true
+    return false
 end
 
 function rand!(pC::Ccoin, cc::CoinContainer, XX::ConfluentDiffBridge)
     iᵒ = XX.τ[1][1]
     τIdx = XX.τ[1][2]
-    rand!(pC, XX.fwcᵒ[iᵒ], XX.bwcᵒ[iᵒ], XX.auxᵒ[iᵒ], cc, τIdx:τIdx)
+    return rand!(pC, XX.fwcᵒ[iᵒ], XX.bwcᵒ[iᵒ], XX.auxᵒ[iᵒ], cc, τIdx:τIdx)
 end
 
 
@@ -49,7 +49,6 @@ function rand!(coin::S, fw::PathSegment, bw::PathSegment, aux::PathSegment,
 end
 
 
-
 function rand!(p::S, cc::CoinContainer, x0_fw::Float64, xT_fw, x0_bw,
                xT_bw, x0_aux, xT_aux, t0, T) where S <: Union{Bcoin, Ccoin}
     α, r0, rT, r, θ₀, Tᵒ = set_constants!(cc, x0_fw, xT_fw, x0_bw, xT_bw,
@@ -57,7 +56,7 @@ function rand!(p::S, cc::CoinContainer, x0_fw::Float64, xT_fw, x0_bw,
     θₜ = compute_θₜ(p, cc, Tᵒ)
     logc = compute_logc(p, cc, Tᵒ, α, r0, rT)
 
-    too_far_apart(Tᵒ, cc.g0[2], cc.gT[2]) && return true
+    too_far_apart(Tᵒ, cc.g0[2], cc.gT[2]) && return false
     too_far_apart(Tᵒ, cc.g0[1], cc.gT[1]) && return rand(Dcoin(), cc.g0[2], cc.gT[2], Tᵒ)
 
     U = rand(Uniform())
@@ -72,11 +71,11 @@ function rand!(p::S, cc::CoinContainer, x0_fw::Float64, xT_fw, x0_bw,
         for i in 1:N
             total += cc.multipliers[i] * cc.bessel_func[i]
         end
-        total = exp(log(total) + logc)
+        total = sign(total)*exp(log(abs(total)) + logc)
         error = get_error(cc, logc)
 
-        (U ≤ total - error) && return true
-        (U > total + error) && return false
+        (U ≤ total - error) && return false
+        (U > total + error) && return true
 
         update_error!(cc, N+1, M, r)
         m_increm = 0

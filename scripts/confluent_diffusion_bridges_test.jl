@@ -61,16 +61,27 @@ show(p)
 
 # Let's test auxiliary sampler now
 Random.seed!(4)
-samples = zeros(Int64, 10000)
-for i in 1:10000
+N = 10000
+samples = zeros(Int64, N)
+for i in 1:N
     samples[i] = rand!(XX, P, Auxiliary())
 end
-samples[samples.≥5]
+probs = [length(samples[samples.≥i])/N for i in 2:8]
+
+total = 0
+for i in 1:1000
+    global total += rand!(Bcoin(), cc, temp₁...)
+end
+total
+for i in 1:1000
+    global total += rand!(Bcoin(), cc, temp₂...)
+end
+total
 
 Random.seed!(4)
 
 rand!(XX, P, Auxiliary())
-s
+1.0
 
 function plotMeᵒ(i, add=true)
     fw = XX.fwcᵒ[i]
