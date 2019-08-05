@@ -11,6 +11,7 @@ struct ConfluentDiffBridge
     aux::Vector{PathSegment}
     auxᵒ::Vector{PathSegment}
     τ::Vector{Tuple{Int64, Int64, Float64, Float64}}
+    coin::CoinContainer
 
     function ConfluentDiffBridge(T::Number, numSegments::Integer)
         dt = T/numSegments
@@ -19,7 +20,8 @@ struct ConfluentDiffBridge
         θ = [deepcopy(c) for i in 1:9]
         τIdx = [(1,1,1.0,1.0)]
 
-        new(θ[1], θ[2], θ[3], θ[4], θ[5], θ[6], θ[7], θ[8], θ[9], τIdx)
+        new(θ[1], θ[2], θ[3], θ[4], θ[5], θ[6], θ[7], θ[8], θ[9], τIdx,
+            CoinContainer())
     end
 end
 
@@ -259,8 +261,8 @@ end
 
 
 function auxCross(XX::ConfluentDiffBridge)
-    diffsCross = ( simpleCrossing(XX) || rand(Acoin(), XX) )
-                   #|| rand(Bcoin(), XX) || rand(Coin(), XX) )
+    diffsCross = ( simpleCrossing(XX) || rand(Acoin(), XX)
+                   || rand!(Bcoin(), XX.coin, XX) || rand!(Ccoin(), XX.coin, XX) )
     return diffsCross
 end
 

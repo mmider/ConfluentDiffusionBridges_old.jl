@@ -8,9 +8,10 @@ include(joinpath(SRC_DIR, "indexing.jl"))
 include(joinpath(SRC_DIR, "wiener.jl"))
 include(joinpath(SRC_DIR, "langevin_t_distr_diffusion.jl"))
 include(joinpath(SRC_DIR, "simple_fpt_coin.jl"))
-include(joinpath(SRC_DIR, "aux_fpt_coins.jl"))
 include(joinpath(SRC_DIR, "path_space_rejection_sampler.jl"))
+include(joinpath(SRC_DIR, "coin_container.jl"))
 include(joinpath(SRC_DIR, "confluent_diffusion_bridges.jl"))
+include(joinpath(SRC_DIR, "aux_fpt_coins.jl"))
 include(joinpath(SRC_DIR, "fill_BB.jl"))
 
 using Plots
@@ -65,6 +66,11 @@ for i in 1:10000
     samples[i] = rand!(XX, P, Auxiliary())
 end
 samples[samples.≥5]
+
+Random.seed!(4)
+
+rand!(XX, P, Auxiliary())
+s
 
 function plotMeᵒ(i, add=true)
     fw = XX.fwcᵒ[i]
