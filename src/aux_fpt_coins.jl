@@ -1,6 +1,7 @@
 import Random.rand
 import SpecialFunctions.lgamma
 
+
 function rand(::Acoin, XX::ConfluentDiffBridge)
     iᵒ = XX.τᵒ[1][1]
     τIdx = XX.τᵒ[1][2]
@@ -14,7 +15,7 @@ end
 
 function rand(::Acoin, A::PathSegment, B::PathSegment, iRange)
     for i in iRange
-        d0 = A.yy[i]-B.yy[i]
+        d0 = A.yy[i] - B.yy[i]
         dT = A.yy[i+1] - B.yy[i+1]
         T = A.tt[i+1] - A.tt[i]
         rand(Dcoin(), d0, dT, T) && return true
@@ -35,6 +36,7 @@ end
 function rand!(pC::Ccoin, cc::CoinContainer, XX::ConfluentDiffBridge)
     iᵒ = XX.τᵒ[1][1]
     τIdx = XX.τᵒ[1][2]
+    @assert XX.fwcᵒ[iᵒ].yy[τIdx] == XX.bwcᵒ[iᵒ].yy[τIdx]
     return rand!(pC, XX.fwcᵒ[iᵒ], XX.bwcᵒ[iᵒ], XX.auxᵒ[iᵒ], cc, τIdx-1:τIdx-1)
 end
 

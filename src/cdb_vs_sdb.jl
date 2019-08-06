@@ -33,14 +33,13 @@ function mcmc_sdb(P, x0, xT, tt, numMCMCsteps=1000)
     numAccepted = 0
     midis = zeros(Float64, numMCMCsteps)
     for i in 1:numMCMCsteps
-        rand!(XX, P, Proposal(), x0, xT, WWᵒ)
-#        rand!(XXᵒ, P, Proposal(), x0, xT, WWᵒ)
-#        𝓣ᵒ = rand!(XXᵒ, P, Auxiliary(), WWᵒ)
-#        if rand() ≤ 𝓣ᵒ/𝓣
-#            XXᵒ, XX = XX, XXᵒ
-#            𝓣ᵒ, 𝓣 = 𝓣, 𝓣ᵒ
-#            numAccepted += 1
-#        end
+        rand!(XXᵒ, P, Proposal(), x0, xT, WWᵒ)
+        𝓣ᵒ = rand!(XXᵒ, P, Auxiliary(), WWᵒ)
+        if rand() ≤ 𝓣ᵒ/𝓣
+            XXᵒ, XX = XX, XXᵒ
+            𝓣ᵒ, 𝓣 = 𝓣, 𝓣ᵒ
+            numAccepted += 1
+        end
         midis[i] = XX.prop.yy[midi]
     end
     elapsed = time() - start
@@ -64,14 +63,13 @@ function mcmc_cdb(P, x0, xT, T, numSegments, numMCMCsteps=1000; cutoff=Inf)
     numAccepted = 0
     midis = zeros(Float64, numMCMCsteps)
     for i in 1:numMCMCsteps
-        rand!(XX, P, Proposal(), x0, xT)
-#        rand!(XXᵒ, P, Proposal(), x0, xT)
-#        𝓣ᵒ = rand!(XXᵒ, P, Auxiliary(), cutoff=cutoff)
-#        if rand() ≤ 𝓣ᵒ/𝓣
-#            XXᵒ, XX = XX, XXᵒ
-#            𝓣ᵒ, 𝓣 = 𝓣, 𝓣ᵒ
-#            numAccepted += 1
-#        end
+        rand!(XXᵒ, P, Proposal(), x0, xT)
+        𝓣ᵒ = rand!(XXᵒ, P, Auxiliary(), cutoff=cutoff)
+        if rand() ≤ 𝓣ᵒ/𝓣
+            XXᵒ, XX = XX, XXᵒ
+            𝓣ᵒ, 𝓣 = 𝓣, 𝓣ᵒ
+            numAccepted += 1
+        end
         ttᵒ, yyᵒ = path!(XX, [0.0, 0.5*T, T])
         midis[i] = yyᵒ[ttᵒ.==0.5*T][1]
     end
@@ -87,7 +85,7 @@ P = LangevinT(3.0, λ)
 
 _, mid_sdb = mcmc_sdb(P, x₀, xₜ, 0.0:0.001:T, 1000000)
 
-_, mid_cdb = mcmc_cdb(P, x₀, xₜ, T, 1, 1000000; cutoff=50)
+_, mid_cdb = mcmc_cdb(P, x₀, xₜ, T, 1, 1000; cutoff=50)
 
 using Plots
 histogram(mid_sdb, label="simple diff bridges", alpha=0.5, normalize=:pdf)

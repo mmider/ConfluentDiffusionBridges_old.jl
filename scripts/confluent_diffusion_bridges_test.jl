@@ -43,7 +43,17 @@ function plotMeBw(i)
     p
 end
 
+plot!([1.664771820124903, 1.664771820124903], [-0.5, 3.0])
+plot!([2.382836705251509, 2.382836705251509], [-0.5, 3.0])
+print(XX.fwc[1].tt[1:XX.fwc[1].κ[1]+2])
+print(XX.fwc[1].yy[1:XX.fwc[1].κ[1]+2])
+print(XX.fw[1].tt[1:XX.fw[1].κ[1]+2])
+print(XX.fw[1].yy[1:XX.fw[1].κ[1]+2])
 
+print(XX.bwc[1].tt[1:XX.bwc[1].κ[1]+2])
+print(XX.bwc[1].yy[1:XX.bwc[1].κ[1]+2])
+print(16.0.-reverse(XX.bw[4].tt[1:XX.bw[4].κ[1]+2]))
+print(reverse(XX.bw[4].yy[1:XX.bw[4].κ[1]+2]))
 
 p = plotMe(1, false)
 plotMe(2)
@@ -72,7 +82,7 @@ Random.seed!(4)
 
 rand!(XX, P, Auxiliary())
 
-ttᵒ, yyᵒ = path(XX, 0.0:0.01:16.0)
+ttᵒ, yyᵒ = path!(XX, 0.0:0.01:16.0)
 plot!(ttᵒ, yyᵒ)
 
 function plotMeᵒ(i, add=true)

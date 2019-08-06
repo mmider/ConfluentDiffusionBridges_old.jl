@@ -393,7 +393,7 @@ function crossPopulateAuxMid!(XX, fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, τIdx)
     i_fw, i_aux, idx_of_τ = fillInFwBwAuxᵒ!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, i_fw,
                                             i_aux, τ, x_τ)
 
-    XX.τᵒ[1] = crossIntv, idx_of_τ, τ, x_τ
+    XX.τᵒ[1] = (crossIntv, idx_of_τ, τ, x_τ)
 
     while moreLeft(i_fw)
         i_fw, i_aux = fillInFwBwAux!(fw, bw, aux, fwᵒ, bwᵒ, auxᵒ, i_fw, i_aux,
@@ -517,10 +517,8 @@ end
 function path!(XX::ConfluentDiffBridge, tt)
     set_artificial_aux!(XX, tt)
     crossPopulateAux!(XX)
-    yy = zeros(Float64, length(tt))
     iᵒ, τIdx, _, _ = XX.τᵒ[1]
     N = length(XX)
-    idx = 1
     ttᵒ = zeros(Float64, 0)
     yyᵒ = zeros(Float64, 0)
     for i in 1:iᵒ-1
@@ -535,9 +533,8 @@ function path!(XX::ConfluentDiffBridge, tt)
 
     bw = XX.bwcᵒ[iᵒ]
     M = bw.κ[1]+1
-    ttᵒ = vcat(ttᵒ, bw.tt[τIdx:M])
-    yyᵒ = vcat(yyᵒ, bw.yy[τIdx:M])
-
+    ttᵒ = vcat(ttᵒ, bw.tt[τIdx+1:M])
+    yyᵒ = vcat(yyᵒ, bw.yy[τIdx+1:M])
     for i in iᵒ+1:N
         bw = XX.bwcᵒ[i]
         M = bw.κ[1]+1
