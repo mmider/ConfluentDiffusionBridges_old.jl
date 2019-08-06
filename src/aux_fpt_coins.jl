@@ -1,5 +1,5 @@
 import Random.rand
-import SpecialFunctions.gamma
+import SpecialFunctions.lgamma
 
 function rand(::Acoin, XX::ConfluentDiffBridge)
     iᵒ = XX.τᵒ[1][1]
@@ -130,10 +130,11 @@ coordinate
 """
 function set_end_pts_G!(cc::CoinContainer, x0_fw, xT_fw, x0_bw, xT_bw, x0_aux,
                         xT_aux, opposite_signs)
+    s = opposite_signs ? -1 : 1
     cc.g0[1] = x0_fw - x0_bw
-    cc.g0[2] = (-1)^opposite_signs * (x0_fw - x0_aux)
+    cc.g0[2] = s * (x0_fw - x0_aux)
     cc.gT[1] = xT_fw - xT_bw
-    cc.gT[2] = (-1)^opposite_signs * (xT_fw - xT_aux)
+    cc.gT[2] = s * (xT_fw - xT_aux)
 end
 
 """
@@ -171,13 +172,13 @@ end
 compute_α(cc::CoinContainer) = π/3.0*(1+!cc.signs[2])
 
 function compute_r(cc::CoinContainer, T)
-    s = cc.signs[2] ? 1 : -1
-    r0 = compute_r(cc.g0, s)
-    rT = compute_r(cc.gT, s)
+    s1 = cc.signs[2] ? 1 : -1
+    r0 = compute_r(cc.g0, s1)
+    rT = compute_r(cc.gT, s1)
     r0, rT, 0.5*r0*rT/T
 end
 
-compute_r(g::Vector{Float64}, s) = √(2.0/3.0*(g[1]^2 + g[2]^2+s*g[1]*g[2]))
+compute_r(g::Vector{Float64}, s) = √(2.0/3.0*(g[1]^2 + g[2]^2 + s*g[1]*g[2]))
 
 
 compute_θₜ(pB::Bcoin, cc::CoinContainer, T) = compute_θ(cc.gT, T, cc.signs[2])
@@ -264,7 +265,7 @@ get_multiplier(pC::Coin, n, θ₀, ::Any, α) = n*sin(n*π*(α-θ₀)/α)
 function bessel_term!(cc::CoinContainer, n, m, α, r)
     if m == 0
         resize!(cc.bessel_terms, n)
-        cc.bessel_terms[n] = n*π/α*log(r) - log(gamma(n*π/α+1.0))
+        cc.bessel_terms[n] = n*π/α*log(r) - lgamma(n*π/α+1.0)
         resize!(cc.bessel_func, n)
         cc.bessel_func[n] = exp(cc.bessel_terms[n])
     else

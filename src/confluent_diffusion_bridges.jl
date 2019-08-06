@@ -258,8 +258,8 @@ end
 
 
 function auxCross(XX::ConfluentDiffBridge)
-    diffsCross = ( simpleCrossing(XX))# || rand(Acoin(), XX))
-                   #|| rand!(Bcoin(), XX.coin, XX) || rand!(Ccoin(), XX.coin, XX) )
+    diffsCross = ( simpleCrossing(XX) || rand(Acoin(), XX)
+                   || rand!(Bcoin(), XX.coin, XX) || rand!(Ccoin(), XX.coin, XX) )
     return diffsCross
 end
 
