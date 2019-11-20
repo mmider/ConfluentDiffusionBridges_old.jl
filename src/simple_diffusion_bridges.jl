@@ -70,7 +70,7 @@ Sample auxiliary diffusion paths until the first crossing time of the proposal
 ...
 """
 function rand!(XX::SimpleDiffBridge, P::ContinuousTimeProcess, ::Auxiliary, WW)
-    #XX.bw.yy[1]     # start from the end-point of the bridge
+    #y = XX.bw.yy[1]     # start from the end-point of the bridge
     numAuxSamples = 0
     while true
         y = rand(P, Invariant())    # start from the invariant measure

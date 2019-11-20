@@ -50,14 +50,31 @@ x0, xT, T = -2.0, -2.0, 1.0
 tt = 0.0:0.01:T # time grid
 P = OrnsteinUhlenbeck(0.5, 0.0, 1.0)
 
-# Run simple diffusion bridges
-XX, mid_pts_SDB = mcmc(P, x0, xT, tt, 10^6)
+
+# Run simple diffusion bridges started from the invariant measure
 XX, mid_pts_SDB_mod = mcmc(P, x0, xT, tt, 10^6)
+
+
+#NOTE the old version of simple diffusion bridges is not implemented by default,
+# as it is not correct, however one can implement them by hand in a matter of
+# seconds as follows:
+# To run the old version of simple diffusion bridges (started from a point)
+# then uncomment line 73 in file ../src/simplediffusion_bridges.jl
+# comment out line 76 in the same file, run again the definition of rand! in
+# line 72 of that file, uncomment the line below and run it
+#XX, mid_pts_SDB = mcmc(P, x0, xT, tt, 10^6)
+# once you're done then reverse the changes and run the definition of rand! again
+# so that simple diffusion bridges are defined correctly again.
+
+
+
 
 # Let's compare to the true distribution of mid-points
 # Let's compare the empirical distributions
-p = histogram(mid_pts_SDB, normalize=:pdf, alpha=0.5, label="simple diffusion bridges (original)",legend=:bottomleft)
-histogram!(mid_pts_SDB_mod, normalize=:pdf, alpha=0.5, label="simple diffusion bridges (modified)")
+p = histogram(mid_pts_SDB, normalize=:pdf, alpha=0.5,
+              label="simple diffusion bridges (original)", legend=:bottomleft)
+histogram!(mid_pts_SDB_mod, normalize=:pdf, alpha=0.5,
+           label="simple diffusion bridges (modified)")
 xaxis = -4.0:0.01:0.0
 yaxis = [condpdf(P, x0, x, xT, 0.5, 1.0) for x in xaxis]
 plot!(xaxis, yaxis, label="exact pdf")
@@ -66,7 +83,7 @@ savefig(p, "sdb_vs_truth_ou.png")
 
 
 
-
+# NOTE not important, just for debugging
 # Let's check if the diffusions are spliced together correctly
 WW = SimpleDiffBridge(tt)
 rand!(XX, P, Proposal(), x0, xT, WW) # sample proposal
