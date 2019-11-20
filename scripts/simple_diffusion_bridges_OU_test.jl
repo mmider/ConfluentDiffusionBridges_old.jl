@@ -8,7 +8,7 @@ include(joinpath(SRC_DIR, "wiener.jl"))
 include(joinpath(SRC_DIR, "euler.jl"))
 include(joinpath(SRC_DIR, "simple_diffusion_bridges.jl"))
 include(joinpath(SRC_DIR, "ornstein_uhlenbeck.jl"))
-
+using Random, Distributions
 using Plots
 
 
