@@ -52,7 +52,7 @@ P = OrnsteinUhlenbeck(0.5, 0.0, 1.0)
 
 
 # Run simple diffusion bridges started from the invariant measure
-XX, mid_pts_SDB_mod = mcmc(P, x0, xT, tt, 10^6)
+XX, mid_pts_SDB_mod = mcmc(P, x0, xT, tt, 10^5)
 
 
 #NOTE the old version of simple diffusion bridges is not implemented by default,
